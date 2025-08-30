@@ -4,3 +4,19 @@ __pycache__/
 .env
 .vscode/
 .DS_Store
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtualenvs
+venv/
+.venv/
+env/
+
+# Editors
+.vscode/
