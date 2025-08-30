@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python test:*)",
+      "Bash(python3:*)",
+      "Bash(chmod:*)",
+      "Bash(./setup_backend.sh:*)",
+      "Bash(source:*)",
+      "Bash(./.venv/bin/python -m pip install:*)",
+      "Bash(./.venv/bin/python:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

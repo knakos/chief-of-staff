@@ -5,3 +5,5 @@ pydantic
 sqlalchemy
 python-dotenv
 faiss-cpu
+anthropic
+aiofiles
