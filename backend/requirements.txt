@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+websockets
+pydantic
+sqlalchemy
+python-dotenv
+faiss-cpu
