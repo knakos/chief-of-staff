@@ -20,3 +20,12 @@ env/
 
 # Editors
 .vscode/
+
+# Node
+node_modules/
+# Python
+__pycache__/
+.venv/
+venv/
+# Editors
+.vscode/
