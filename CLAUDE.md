@@ -29,6 +29,9 @@ python optimize_db.py
 
 # Test backend setup
 python test_setup.py  # Comprehensive setup validation
+
+# Rate limiting and performance testing
+python -c "from claude_client import ClaudeClient; import asyncio; print('Testing rate limiting...'); asyncio.run(ClaudeClient()._apply_rate_limiting())"
 ```
 
 ### Frontend Development  
@@ -157,6 +160,8 @@ Three-tier system with real-time WebSocket communication, optimized performance,
   - `background/` - Background job prompts (context_scan.md, email_scan.md, digest_build.md)
 - **Claude Integration**: Single AI provider, prompts loaded at startup, hard-fail if missing
 - **Response Caching**: 5-minute TTL cache with deterministic keys, LRU prompt caching
+- **Rate Limiting**: 30-minute idle timeout before connection checks, 1-second minimum between API calls
+- **Activity Tracking**: User interactions reset idle timer to prevent unnecessary API calls
 - **Development Mode**: Mock responses enabled when ANTHROPIC_API_KEY not set
 - **Prompt Management**: `claude_client.py` handles prompt loading, caching, and Claude API calls
 
