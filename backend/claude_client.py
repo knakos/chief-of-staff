@@ -45,7 +45,7 @@ class ClaudeClient:
         for prompt_file in prompt_files:
             # Create key from relative path (e.g., "system/cos.md" -> "system/cos")
             relative_path = prompt_file.relative_to(self.prompts_dir)
-            prompt_key = str(relative_path).replace(".md", "")
+            prompt_key = str(relative_path).replace(".md", "").replace("\\", "/")
             
             try:
                 # Get file modification time
@@ -230,10 +230,10 @@ Would you like me to dive deeper into any specific area?"""
             return """Starting inbox triage...
 
 **Processed 8 emails:**
-- 3 moved to @Action (require response)
-- 2 moved to @Waiting (pending others)  
-- 2 moved to @ReadLater (informational)
-- 1 moved to COS/Processed (completed)
+- 3 moved to COS_Actions (require response)
+- 2 moved to COS_Assigned (pending others)  
+- 2 moved to COS_ReadLater (informational)
+- 1 moved to COS_Archive (completed)
 
 **Action Required:**
 1. Email from John Smith - Project proposal review (Due: Tomorrow)
@@ -256,7 +256,7 @@ What would you like to focus on first?"""
     def _mock_email_triage_response(self, context: Dict[str, Any]) -> str:
         """Mock email triage response"""
         return """Email triage completed. Recommended actions:
-- Move to @Action folder
+- Move to COS_Actions folder
 - Tag with COS/Project-Alpha  
 - Priority: High
 - Suggested response: Schedule follow-up meeting"""
@@ -417,10 +417,10 @@ Consider scheduling focused time for Project Alpha client feedback review - it's
                 "payload": {"duration": "30min", "type": "follow-up"}
             },
             {
-                "action": "Move to @Action folder", 
+                "action": "Move to COS_Actions folder", 
                 "confidence": 0.9,
                 "rationale": "Email contains clear action items requiring response",
-                "payload": {"folder": "@Action"}
+                "payload": {"folder": "COS_Actions"}
             }
         ]
         

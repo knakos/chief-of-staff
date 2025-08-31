@@ -88,7 +88,7 @@ class Email(Base):
     
     # Processing status
     status = Column(String, default="unprocessed", index=True)  # unprocessed, triaged, archived
-    folder = Column(String)  # @Action, @Waiting, etc.
+    folder = Column(String)  # COS_Actions, COS_Assigned, COS_ReadLater, COS_Reference, COS_Archive, etc.
     categories = Column(Text)  # JSON array of categories
     
     # AI-generated content

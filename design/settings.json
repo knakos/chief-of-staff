@@ -37,20 +37,26 @@
         "errorBg": "rgba(220, 38, 38, 0.1)",
         "info": "#2563eb",
         "infoBg": "rgba(37, 99, 235, 0.1)"
+      },
+      "link": {
+        "primary": "#1d4ed8",
+        "hover": "#2563eb",
+        "visited": "#7c3aed",
+        "underlineColor": "#1d4ed8"
       }
     },
     "typography": {
-      "fontFamily": "'Bell MT', 'Times New Roman', 'Times', serif",
+      "fontFamily": "'Aptos', 'Segoe UI', 'Calibri', 'Arial', sans-serif",
       "fontDisplay": "'Hack', 'Monaco', 'Consolas', 'Courier New', monospace",
       "fontMono": "'Hack', 'SF Mono', 'Monaco', 'Consolas', monospace",
       "fontSize": {
-        "xs": "0.75rem",
+        "xs": "0.7rem",
         "sm": "0.875rem",
-        "base": "1rem",
-        "lg": "1.125rem",
-        "xl": "1.25rem",
-        "2xl": "1.5rem",
-        "3xl": "1.875rem"
+        "base": "1.125rem",
+        "lg": "1.25rem",
+        "xl": "1.5rem",
+        "2xl": "1.75rem",
+        "3xl": "2.0rem"
       },
       "fontWeight": {
         "normal": 400,

@@ -8,101 +8,112 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   
   <!-- Load custom fonts -->
-  <link rel="stylesheet" href="assets/fonts/fonts.css">
+  <link rel="stylesheet" href="assets/fonts/fonts.css?v=8">
+  <link rel="stylesheet" href="design/modern-tokens.css?v=8">
   
   <!-- Load React and Babel for development -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   
+  <!-- Load URL formatting utilities -->
+  <script src="utils/url-formatter.js"></script>
+  
   <style id="app-styles">
-    /* Settings-based CSS - Generated from design/settings.json */
-    :root {
-      /* Colors */
-      --bg-primary: #f5f5f7;
-      --bg-secondary: #ffffff; 
-      --bg-tertiary: #e5e5e7;
-      --surface-base: #ffffff;
-      --surface-hover: #f0f0f2;
-      --surface-active: #e0e0e3;
-      --text-primary: #1d1d1f;
-      --text-secondary: #515154;
-      --text-muted: #86868b;
-      --text-disabled: #c7c7cc;
-      --border-base: #d2d2d7;
-      --border-hover: #a1a1a6;
-      --border-focus: #1d4ed8;
-      --brand-primary: #1e3a8a;
-      --brand-hover: #1d4ed8;
-      --brand-active: #1e40af;
-      --success: #059669;
-      --success-bg: rgba(5, 150, 105, 0.1);
-      --warning: #d97706;
-      --warning-bg: rgba(217, 119, 6, 0.1);
-      --error: #dc2626;
-      --error-bg: rgba(220, 38, 38, 0.1);
-      --info: #2563eb;
-      --info-bg: rgba(37, 99, 235, 0.1);
-      
-      /* Typography */
-      --font-family: 'Bell MT', 'Times New Roman', 'Times', serif;
-      --font-display: 'Hack', 'Monaco', 'Consolas', 'Courier New', monospace;
-      --font-mono: 'Hack', 'SF Mono', 'Monaco', 'Consolas', monospace;
-      --font-size-xs: 0.75rem;
-      --font-size-sm: 0.875rem;
-      --font-size-base: 1rem;
-      --font-size-lg: 1.125rem;
-      --font-size-xl: 1.25rem;
-      --font-size-2xl: 1.5rem;
-      --font-size-3xl: 1.875rem;
-      --font-weight-normal: 400;
-      --font-weight-medium: 500;
-      --font-weight-semibold: 600;
-      --font-weight-bold: 700;
-      --line-height-tight: 1.25;
-      --line-height-base: 1.5;
-      --line-height-relaxed: 1.625;
-      
-      /* Spacing */
-      --space-1: 0.25rem;
-      --space-2: 0.5rem;
-      --space-3: 0.75rem;
-      --space-4: 1rem;
-      --space-5: 1.25rem;
-      --space-6: 1.5rem;
-      --space-8: 2rem;
-      --space-10: 2.5rem;
-      --space-12: 3rem;
-      --space-16: 4rem;
-      --space-20: 5rem;
-      
-      /* Border Radius */
-      --radius-sm: 0.375rem;
-      --radius-base: 0.5rem;
-      --radius-md: 0.625rem;
-      --radius-lg: 0.75rem;
-      --radius-xl: 1rem;
-      --radius-2xl: 1.5rem;
-      --radius-full: 9999px;
-      
-      /* Shadows */
-      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-      --shadow-base: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-      --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-      
-      /* Transitions */
-      --duration-fast: 150ms;
-      --duration-base: 200ms;
-      --duration-slow: 300ms;
-      --duration-ease: cubic-bezier(0.4, 0, 0.2, 1);
-      
-      /* Layout */
-      --sidebar-width: 72px;
-      --chatbox-width: 400px;
-      --container-max: 1200px;
-    }
+    /* Settings-based CSS will be loaded dynamically */
+  </style>
+  
+  <script>
+    // Load settings and generate CSS
+    fetch('./design/settings.json')
+      .then(response => response.json())
+      .then(settings => {
+        const theme = settings.theme;
+        let css = ':root {\n';
+        
+        // Colors
+        css += `  --bg-primary: ${theme.colors.background.primary};\n`;
+        css += `  --bg-secondary: ${theme.colors.background.secondary};\n`;
+        css += `  --bg-tertiary: ${theme.colors.background.tertiary};\n`;
+        css += `  --surface-base: ${theme.colors.surface.default};\n`;
+        css += `  --surface-hover: ${theme.colors.surface.hover};\n`;
+        css += `  --surface-active: ${theme.colors.surface.active};\n`;
+        css += `  --text-primary: ${theme.colors.text.primary};\n`;
+        css += `  --text-secondary: ${theme.colors.text.secondary};\n`;
+        css += `  --text-muted: ${theme.colors.text.muted};\n`;
+        css += `  --text-disabled: ${theme.colors.text.disabled};\n`;
+        css += `  --border-base: ${theme.colors.border.default};\n`;
+        css += `  --border-hover: ${theme.colors.border.hover};\n`;
+        css += `  --border-focus: ${theme.colors.border.focus};\n`;
+        css += `  --brand-primary: ${theme.colors.brand.primary};\n`;
+        css += `  --brand-hover: ${theme.colors.brand.hover};\n`;
+        css += `  --brand-active: ${theme.colors.brand.active};\n`;
+        css += `  --success: ${theme.colors.status.success};\n`;
+        css += `  --success-bg: ${theme.colors.status.successBg};\n`;
+        css += `  --warning: ${theme.colors.status.warning};\n`;
+        css += `  --warning-bg: ${theme.colors.status.warningBg};\n`;
+        css += `  --error: ${theme.colors.status.error};\n`;
+        css += `  --error-bg: ${theme.colors.status.errorBg};\n`;
+        css += `  --info: ${theme.colors.status.info};\n`;
+        css += `  --info-bg: ${theme.colors.status.infoBg};\n`;
+        css += `  --link-primary: ${theme.colors.link.primary};\n`;
+        css += `  --link-hover: ${theme.colors.link.hover};\n`;
+        css += `  --link-visited: ${theme.colors.link.visited};\n`;
+        css += `  --link-underline: ${theme.colors.link.underlineColor};\n`;
+        
+        // Typography  
+        css += `  --font-family: ${theme.typography.fontFamily};\n`;
+        css += `  --font-display: ${theme.typography.fontDisplay};\n`;
+        css += `  --font-mono: ${theme.typography.fontMono};\n`;
+        css += `  --font-size-xs: ${theme.typography.fontSize.xs};\n`;
+        css += `  --font-size-sm: ${theme.typography.fontSize.sm};\n`;
+        css += `  --font-size-base: ${theme.typography.fontSize.base};\n`;
+        css += `  --font-size-lg: ${theme.typography.fontSize.lg};\n`;
+        css += `  --font-size-xl: ${theme.typography.fontSize.xl};\n`;
+        css += `  --font-size-2xl: ${theme.typography.fontSize['2xl']};\n`;
+        css += `  --font-size-3xl: ${theme.typography.fontSize['3xl']};\n`;
+        css += `  --font-weight-normal: ${theme.typography.fontWeight.normal};\n`;
+        css += `  --font-weight-medium: ${theme.typography.fontWeight.medium};\n`;
+        css += `  --font-weight-semibold: ${theme.typography.fontWeight.semibold};\n`;
+        css += `  --font-weight-bold: ${theme.typography.fontWeight.bold};\n`;
+        css += `  --line-height-tight: ${theme.typography.lineHeight.tight};\n`;
+        css += `  --line-height-base: ${theme.typography.lineHeight.base};\n`;
+        css += `  --line-height-relaxed: ${theme.typography.lineHeight.relaxed};\n`;
+        
+        // Spacing
+        Object.entries(theme.spacing).forEach(([key, value]) => {
+          css += `  --space-${key}: ${value};\n`;
+        });
+        
+        // Border radius
+        Object.entries(theme.borderRadius).forEach(([key, value]) => {
+          css += `  --radius-${key}: ${value};\n`;
+        });
+        
+        // Shadows
+        Object.entries(theme.shadows).forEach(([key, value]) => {
+          css += `  --shadow-${key}: ${value};\n`;
+        });
+        
+        // Transitions
+        css += `  --duration-fast: ${theme.transitions.fast};\n`;
+        css += `  --duration-base: ${theme.transitions.base};\n`;
+        css += `  --duration-slow: ${theme.transitions.slow};\n`;
+        css += `  --ease: ${theme.transitions.ease};\n`;
+        
+        // Layout
+        css += `  --sidebar-width: ${settings.layout.sidebar.width};\n`;
+        css += `  --chatbox-width: ${settings.layout.chatbox.width};\n`;
+        
+        css += '}\n';
+        
+        // Apply the generated CSS
+        document.getElementById('app-styles').innerHTML = css;
+      })
+      .catch(err => console.warn('Failed to load settings.json, using default styles'));
+  </script>
+  
+  <style>
     
     /* Base Styles */
     * { box-sizing: border-box; }
@@ -340,6 +351,7 @@
       padding: var(--space-3) var(--space-4);
       border-radius: var(--radius-lg);
       font-family: var(--font-family);
+      font-size: var(--font-size-sm);
       line-height: var(--line-height-base);
       word-wrap: break-word;
       white-space: pre-wrap;
@@ -428,6 +440,55 @@
   
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
+    
+    // URL Formatting Component
+    const FormattedText = ({ text, linkText = "here", className = "" }) => {
+      const [formattedHtml, setFormattedHtml] = useState('');
+      
+      useEffect(() => {
+        if (typeof window.UrlFormatter !== 'undefined') {
+          window.UrlFormatter.formatUrlsInText(text, linkText)
+            .then(html => setFormattedHtml(html))
+            .catch(() => setFormattedHtml(text)); // Fallback to original text
+        } else {
+          setFormattedHtml(text);
+        }
+      }, [text, linkText]);
+      
+      return React.createElement('div', {
+        className: `formatted-text ${className}`,
+        dangerouslySetInnerHTML: { __html: formattedHtml }
+      });
+    };
+    
+    // URL Link Component (for single URLs)  
+    const UrlLink = ({ url, children, className = "" }) => {
+      const linkStyle = {
+        color: 'var(--link-primary)',
+        textDecoration: 'underline',
+        textDecorationColor: 'var(--link-underline)',
+        cursor: 'pointer',
+        transition: 'color 0.2s ease'
+      };
+      
+      const handleMouseOver = (e) => {
+        e.target.style.color = 'var(--link-hover)';
+      };
+      
+      const handleMouseOut = (e) => {
+        e.target.style.color = 'var(--link-primary)';
+      };
+      
+      return React.createElement('a', {
+        href: url,
+        target: '_blank',
+        rel: 'noopener noreferrer',
+        className: `url-link ${className}`,
+        style: linkStyle,
+        onMouseOver: handleMouseOver,
+        onMouseOut: handleMouseOut
+      }, children || '[here]');
+    };
     
     function App() {
       const [activeSection, setActiveSection] = useState("main");
@@ -597,18 +658,18 @@
             React.createElement('div', { className: 'messages-area' },
               messages.length === 0 ? (
                 React.createElement('div', { className: 'welcome-message' },
-                  React.createElement('div', { className: 'welcome-icon' }, '🤖'),
-                  React.createElement('h4', { className: 'font-medium mb-2' }, 'Hello! I\'m your Chief of Staff'),
+                  React.createElement('div', { className: 'welcome-icon' }, '📋'),
+                  React.createElement('h4', { className: 'font-medium mb-2' }, 'Welcome to Chief of Staff'),
                   React.createElement('p', { className: 'text-sm text-muted mb-4' }, 
-                    'I can help you plan, summarize, and organize your work. Try these commands:'
+                    'Your intelligent productivity assistant. I can help you plan your day, organize your emails, manage projects, and much more. Just ask me anything!'
                   ),
                   React.createElement('div', { className: 'quick-commands' },
-                    ['/plan', '/summarize', '/triage'].map(cmd =>
+                    ['Help me plan my day', 'What\'s in my inbox?', 'Show me my current projects'].map(suggestion =>
                       React.createElement('button', {
-                        key: cmd,
+                        key: suggestion,
                         className: 'quick-cmd-btn',
-                        onClick: () => setInputText(cmd)
-                      }, cmd)
+                        onClick: () => setInputText(suggestion)
+                      }, suggestion)
                     )
                   )
                 )
@@ -618,7 +679,9 @@
                     key: idx, 
                     className: `message ${msg.role} ${msg.isTyping ? 'typing' : ''}`
                   },
-                    React.createElement('div', { className: 'message-content' }, msg.content),
+                    msg.role === 'agent' 
+                      ? React.createElement(FormattedText, { text: msg.content, className: 'message-content' })
+                      : React.createElement('div', { className: 'message-content' }, msg.content),
                     msg.timestamp && React.createElement('div', { className: 'message-time' }, msg.timestamp)
                   )
                 )
@@ -631,7 +694,7 @@
               React.createElement('div', { className: 'input-wrapper' },
                 React.createElement('input', {
                   className: 'chat-input',
-                  placeholder: 'Ask your Chief of Staff...',
+                  placeholder: 'What can I help you with today?',
                   value: inputText,
                   onChange: (e) => setInputText(e.target.value),
                   onKeyPress: handleKeyPress,

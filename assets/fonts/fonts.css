@@ -9,18 +9,18 @@
   font-display: swap;
 }
 
-/* Bell MT Font - Text/Body Font (body text, chat, paragraphs) */
+/* Bell MT Font - Text/Body Font */
 @font-face {
-  font-family: 'Bell MT';
-  src: url('./primary/Bell MT.ttf') format('truetype');
+  font-family: 'BellMT';
+  src: url('./primary/BellMT.ttf') format('truetype');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 
-/* Fallback font stacks */
+/* Font stacks with Bell MT */
 :root {
-  --font-display: 'Hack', 'Monaco', 'Consolas', 'Courier New', monospace;
-  --font-text: 'Bell MT', 'Times New Roman', 'Times', serif;
-  --font-mono: 'Hack', 'SF Mono', 'Monaco', 'Consolas', monospace;
+  --font-display: 'Hack', 'Consolas', 'Monaco', 'Courier New', monospace;
+  --font-text: 'BellMT', 'Georgia', 'Times New Roman', serif;
+  --font-mono: 'Hack', 'Consolas', 'Monaco', 'Courier New', monospace;
 }

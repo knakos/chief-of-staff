@@ -34,25 +34,26 @@
   --info-bg: rgba(37, 99, 235, 0.1);
   
   /* Typography */
-  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'SF Mono', Consolas, monospace;
+  --font-family: 'Aptos', 'Segoe UI', 'Calibri', 'Arial', sans-serif;
+  --font-display: 'Hack', 'Consolas', 'Monaco', 'Courier New', monospace;
+  --font-mono: 'Hack', 'Consolas', 'Monaco', 'Courier New', monospace;
   
-  --font-size-xs: 0.75rem;
-  --font-size-sm: 0.875rem;
-  --font-size-base: 1rem;
-  --font-size-lg: 1.125rem;
-  --font-size-xl: 1.25rem;
-  --font-size-2xl: 1.5rem;
-  --font-size-3xl: 1.875rem;
+  --font-size-xs: 1.125rem;
+  --font-size-sm: 1.25rem;
+  --font-size-base: 1.5rem;
+  --font-size-lg: 1.75rem;
+  --font-size-xl: 2rem;
+  --font-size-2xl: 2.25rem;
+  --font-size-3xl: 2.5rem;
   
   --font-weight-normal: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
   --font-weight-bold: 700;
   
-  --line-height-tight: 1.25;
-  --line-height-base: 1.5;
-  --line-height-relaxed: 1.625;
+  --line-height-tight: 1.3;
+  --line-height-base: 1.55;
+  --line-height-relaxed: 1.7;
   
   /* Spacing */
   --space-1: 0.25rem;
@@ -173,7 +174,8 @@ html, body {
   justify-content: center;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
-  font-size: var(--font-size-sm);
+  font-family: var(--font-display);
+  font-size: var(--font-size-base);
   font-weight: var(--font-weight-medium);
   line-height: 1;
   border: 1px solid var(--border);
@@ -211,7 +213,8 @@ html, body {
 .input {
   width: 100%;
   padding: var(--space-3) var(--space-4);
-  font-size: var(--font-size-sm);
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -283,6 +286,22 @@ html, body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border-hover);
+}
+
+/* Focus styles for accessibility */
+/* Monospace elements */
+code, pre, .code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--bg-tertiary);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+pre {
+  padding: var(--space-3);
+  overflow-x: auto;
+  line-height: 1.4;
 }
 
 /* Focus styles for accessibility */

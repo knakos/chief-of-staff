@@ -7,3 +7,6 @@ python-dotenv
 faiss-cpu
 anthropic
 aiofiles
+pywin32
+aiohttp
+python-multipart

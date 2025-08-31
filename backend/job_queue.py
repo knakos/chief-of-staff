@@ -310,7 +310,7 @@ class JobQueue:
         
         return {
             "email_id": email_id,
-            "folder_assigned": "@Action",
+            "folder_assigned": "COS_Actions",
             "categories": ["COS/Project", "COS/Urgent"],
             "confidence": 0.85
         }

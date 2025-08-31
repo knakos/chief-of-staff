@@ -191,6 +191,17 @@ class OutlookCOMConnector:
             logger.error(f"Error finding folder {folder_name}: {e}")
             return None
     
+    def _check_folder_exists(self, folder_name: str, parent_folder):
+        """Check if a folder exists within a specific parent folder"""
+        try:
+            for folder in parent_folder.Folders:
+                if folder.Name == folder_name:
+                    return folder
+            return None
+        except Exception as e:
+            logger.error(f"Failed to check folder existence '{folder_name}': {e}")
+            return None
+    
     def _search_subfolders(self, parent_folder, target_name):
         """Recursively search subfolders"""
         try:
@@ -276,7 +287,7 @@ class OutlookCOMConnector:
         return importance_map.get(importance_value, "normal")
     
     def create_folder(self, folder_name: str, parent_folder: str = None) -> bool:
-        """Create a new folder"""
+        """Create a new folder if it doesn't exist"""
         if not self.is_connected():
             return False
             
@@ -287,9 +298,16 @@ class OutlookCOMConnector:
                     logger.error(f"Parent folder '{parent_folder}' not found")
                     return False
             else:
-                # Create in Inbox parent
-                parent = self.namespace.GetDefaultFolder(6).Parent
+                # Create under Inbox
+                parent = self.namespace.GetDefaultFolder(6)  # Inbox
             
+            # Check if folder already exists in parent
+            existing_folder = self._check_folder_exists(folder_name, parent)
+            if existing_folder:
+                logger.info(f"Folder already exists: {folder_name}")
+                return True
+            
+            # Create the folder
             new_folder = parent.Folders.Add(folder_name)
             logger.info(f"Created folder: {folder_name}")
             return True
@@ -346,34 +364,21 @@ class OutlookCOMConnector:
             return {}
     
     def setup_gtd_folders(self) -> Dict[str, bool]:
-        """Setup GTD folder structure"""
+        """Setup GTD folder structure under Inbox"""
         gtd_folders = [
-            "@Action",
-            "@Waiting", 
-            "@ReadLater",
-            "@Reference"
+            "COS_Actions",
+            "COS_Assigned", 
+            "COS_ReadLater",
+            "COS_Reference",
+            "COS_Archive"
         ]
         
-        cos_folders = [
-            "COS",
-            "COS/Projects",
-            "COS/Tasks", 
-            "COS/Meetings",
-            "COS/Processed"
-        ]
+        # COS folders removed - using extended properties for project/task linking instead
         
         results = {}
         
-        # Create GTD folders
+        # Create GTD folders under Inbox (default behavior of create_folder)
         for folder in gtd_folders:
             results[folder] = self.create_folder(folder)
-        
-        # Create COS folders
-        for folder in cos_folders:
-            if "/" in folder:
-                parent, child = folder.split("/", 1)
-                results[folder] = self.create_folder(child, parent)
-            else:
-                results[folder] = self.create_folder(folder)
         
         return results

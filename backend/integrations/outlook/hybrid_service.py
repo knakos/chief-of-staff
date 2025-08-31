@@ -29,14 +29,16 @@ class HybridOutlookService:
         self._connection_method = None  # "com" or "graph"
     
     async def connect(self) -> Dict[str, Any]:
-        """Try to connect via COM first, then Graph API"""
+        """Try to connect via COM first, then Graph API, and ensure COS folders exist"""
+        connection_result = None
+        
         # Try COM first (if available and Outlook is running)
         if COM_AVAILABLE and self.com_connector:
             if self.com_connector.connect():
                 self._connection_method = "com"
                 account_info = self.com_connector.get_account_info()
                 logger.info("Connected via COM to local Outlook")
-                return {
+                connection_result = {
                     "method": "com",
                     "connected": True,
                     "account_info": account_info,
@@ -44,12 +46,12 @@ class HybridOutlookService:
                 }
         
         # Fall back to Graph API
-        if self.auth_manager.is_authenticated():
+        if not connection_result and self.auth_manager.is_authenticated():
             self._connection_method = "graph"
             try:
                 access_token = await self.auth_manager.get_valid_access_token()
                 logger.info("Connected via Graph API")
-                return {
+                connection_result = {
                     "method": "graph", 
                     "connected": True,
                     "account_info": {"method": "Microsoft Graph API"},
@@ -58,13 +60,21 @@ class HybridOutlookService:
             except Exception as e:
                 logger.error(f"Graph API connection failed: {e}")
         
+        # If connected, ensure COS folders exist
+        if connection_result and connection_result["connected"]:
+            await self._ensure_cos_folders_exist()
+            connection_result["folders_checked"] = True
+        
         # No connection available
-        return {
-            "method": None,
-            "connected": False,
-            "account_info": {},
-            "message": self._get_connection_help()
-        }
+        if not connection_result:
+            connection_result = {
+                "method": None,
+                "connected": False,
+                "account_info": {},
+                "message": self._get_connection_help()
+            }
+        
+        return connection_result
     
     def _get_connection_help(self) -> str:
         """Get help message for connection options"""
@@ -74,6 +84,26 @@ class HybridOutlookService:
             return "Start Outlook application for COM support, or use /outlook status for Graph API authentication."
         else:
             return "Use /outlook status to authenticate with Microsoft Graph API."
+    
+    async def _ensure_cos_folders_exist(self) -> None:
+        """Check if COS folders exist and create them if missing"""
+        try:
+            if self._connection_method == "graph":
+                # Use Graph API folder manager
+                logger.info("Checking COS folder structure via Graph API...")
+                folder_ids = await self.folder_manager.setup_gtd_folders()
+                logger.info(f"COS folders verified/created: {list(folder_ids.keys())}")
+            elif self._connection_method == "com" and self.com_connector:
+                # Use COM connector
+                logger.info("Checking COS folder structure via COM...")
+                results = self.com_connector.setup_gtd_folders()
+                created_folders = [name for name, success in results.items() if success]
+                logger.info(f"COS folders verified/created: {created_folders}")
+            else:
+                logger.warning("No valid connection method for folder setup")
+        except Exception as e:
+            logger.error(f"Failed to ensure COS folders exist: {e}")
+            # Don't fail the connection if folder setup fails
     
     def is_connected(self) -> bool:
         """Check if any connection method is available"""

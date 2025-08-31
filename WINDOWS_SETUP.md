@@ -73,15 +73,14 @@ npm run dev
 ```
 /outlook setup
 ```
-This will create:
-- @Action
-- @Waiting  
-- @ReadLater
-- @Reference
-- COS/Projects
-- COS/Tasks
-- COS/Meetings
-- COS/Processed
+This will create under Inbox:
+- COS_Actions
+- COS_Assigned  
+- COS_ReadLater
+- COS_Reference
+- COS_Archive
+
+Note: Projects and tasks are linked via email extended properties, not separate folders.
 
 ### 7. Sync and Process Emails
 ```
@@ -124,7 +123,7 @@ Then update the frontend to connect to port 8788.
 2. **Setup:** `/outlook setup` → Creates GTD folders in your Outlook
 3. **Sync:** `/outlook sync` → Downloads emails from `knakos@nbg.gr` inbox
 4. **Process:** `/triage` → AI analyzes and organizes emails into appropriate folders
-5. **Verify:** Check your Outlook - emails should be moved to @Action, @Waiting, etc.
+5. **Verify:** Check your Outlook Inbox - emails should be moved to COS_Actions, COS_Assigned, etc.
 
 ## Benefits of COM Connection
 

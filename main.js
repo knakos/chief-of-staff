@@ -23,6 +23,16 @@ function createWindow() {
   });
 
   win.loadFile('index.html');
+  
+  // Development: disable cache and enable reload
+  if (process.env.NODE_ENV !== 'production') {
+    win.webContents.openDevTools();
+    win.webContents.on('before-input-event', (event, input) => {
+      if (input.control && input.key.toLowerCase() === 'r') {
+        win.reload();
+      }
+    });
+  }
 
   // Block random navigations/popups; open external links in the OS browser
   win.webContents.setWindowOpenHandler(({ url }) => {

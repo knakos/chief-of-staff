@@ -46,11 +46,12 @@ class COSOrchestrator(BaseAgent):
         """Process user input and coordinate appropriate responses"""
         logger.info(f"COS processing user input: {user_input}")
         
-        # Analyze user intent and route to appropriate agent
+        # Check for explicit slash commands (for debugging/power users)
         if user_input.startswith("/"):
             return await self._handle_command(user_input, db)
-        else:
-            return await self._handle_conversation(user_input, db)
+        
+        # For natural language, analyze intent and respond conversationally
+        return await self._handle_conversation(user_input, db)
     
     async def _handle_command(self, command: str, db: Session) -> str:
         """Handle slash commands"""
@@ -73,11 +74,68 @@ class COSOrchestrator(BaseAgent):
             return f"Unknown command: {command}. Available commands: /plan, /summarize, /triage, /digest, /interview, /outlook"
     
     async def _handle_conversation(self, user_input: str, db: Session) -> str:
-        """Handle conversational input"""
+        """Handle conversational input with intent detection"""
         # Get current context for the user
         context = await self._build_current_context(db)
+        user_lower = user_input.lower()
         
-        # Generate response using COS orchestrator prompt
+        # Detect intent and potentially execute actions behind the scenes
+        intent_actions = []
+        
+        # Email/Outlook related intents
+        if any(word in user_lower for word in ["email", "inbox", "outlook", "mail", "triage"]):
+            # Always ensure we're connected when user asks about emails
+            if not self.email_triage.hybrid_service.is_connected():
+                logger.info("User asked about emails but not connected - attempting connection")
+                connect_result = await self.email_triage.hybrid_service.connect()
+                context["outlook_connection"] = connect_result
+                intent_actions.append("outlook_auto_connected")
+                if connect_result.get("connected"):
+                    logger.info("Auto-connection successful - folders should be created")
+            
+            # Check specific email intents and delegate to EmailTriageAgent
+            if any(word in user_lower for word in ["inbox", "messages", "what's in"]):
+                # Delegate to EmailTriageAgent to view inbox
+                inbox_result = await self.email_triage.view_inbox_messages(db, limit=20)
+                context["inbox_messages"] = inbox_result
+                intent_actions.append("inbox_retrieved")
+            elif any(word in user_lower for word in ["connect", "setup", "configure"]):
+                connect_result = await self.email_triage.hybrid_service.connect()
+                context["outlook_connection"] = connect_result
+                intent_actions.append(f"outlook_connect_attempted")
+            elif any(word in user_lower for word in ["sync", "get", "download", "fetch"]):
+                sync_result = await self.email_triage.hybrid_service.sync_emails(db)
+                context["outlook_sync"] = sync_result
+                intent_actions.append(f"outlook_sync_attempted")
+            elif any(word in user_lower for word in ["organize", "triage", "sort", "process"]):
+                # Trigger email triage in background
+                await self.job_queue.add_job("email_scan", {})
+                intent_actions.append("email_triage_started")
+        
+        # Planning related intents
+        elif any(word in user_lower for word in ["plan", "planning", "organize", "schedule", "prioritize"]):
+            # Add planning context
+            active_projects = db.query(Project).filter(Project.status == "active").all()
+            pending_tasks = db.query(Task).filter(Task.status.in_(["pending", "in_progress"])).all()
+            context.update({
+                "active_projects_count": len(active_projects),
+                "pending_tasks_count": len(pending_tasks),
+                "request_type": "planning",
+                "user_wants_planning": True
+            })
+            intent_actions.append("planning_context_added")
+        
+        # Summary related intents  
+        elif any(word in user_lower for word in ["summary", "summarize", "status", "update", "what's happening"]):
+            context["request_type"] = "summary"
+            context["user_wants_summary"] = True
+            intent_actions.append("summary_context_added")
+        
+        # Add detected actions to context
+        if intent_actions:
+            context["detected_actions"] = intent_actions
+        
+        # Generate conversational response using COS orchestrator prompt
         response = await self.claude_client.generate_response(
             "system/cos",
             context=context,
@@ -220,21 +278,29 @@ class COSOrchestrator(BaseAgent):
                 return f"Connection failed: {str(e)}"
         
         elif "/outlook sync" in command:
-            # Sync emails from Outlook
-            result = await self.email_triage.sync_outlook_emails(db)
-            if result["success"]:
-                return f"Outlook sync completed: {result['synced_count']} emails processed"
-            else:
-                return f"Outlook sync failed: {result['error']}"
+            # Sync emails from Outlook using hybrid service
+            try:
+                result = await self.email_triage.hybrid_service.sync_emails(db)
+                if result["success"]:
+                    return f"Outlook sync completed: {result['synced_count']} emails processed via {result['method']}"
+                else:
+                    return f"Outlook sync failed: {result.get('error', 'Unknown error')}"
+            except Exception as e:
+                logger.error(f"Outlook sync error: {e}")
+                return f"Outlook sync failed: {str(e)}"
         
         elif "/outlook setup" in command:
-            # Setup GTD folders
-            result = await self.email_triage.setup_outlook_folders()
-            if result["success"]:
-                folders = ', '.join(result["folders_created"].keys())
-                return f"GTD folder structure created in Outlook: {folders}"
-            else:
-                return f"Folder setup failed: {result['error']}"
+            # Setup GTD folders using hybrid service
+            try:
+                result = await self.email_triage.hybrid_service.setup_gtd_folders()
+                if result["success"]:
+                    folders = ', '.join(result["folders_created"].keys()) if "folders_created" in result else "GTD folders"
+                    return f"GTD folder structure created in Outlook via {result.get('method', 'unknown method')}: {folders}"
+                else:
+                    return f"Folder setup failed: {result.get('error', 'Unknown error')}"
+            except Exception as e:
+                logger.error(f"Outlook setup error: {e}")
+                return f"Folder setup failed: {str(e)}"
         
         elif "/outlook triage" in command:
             # Triage unprocessed Outlook emails
@@ -330,7 +396,7 @@ class COSOrchestrator(BaseAgent):
         result = {"success": False, "message": "Unknown action"}
         
         if action == "move_to_folder":
-            folder = payload.get("folder", "@Action")
+            folder = payload.get("folder", "COS_Actions")
             email.folder = folder
             email.status = "triaged"
             result = {"success": True, "message": f"Email moved to {folder}"}
@@ -568,6 +634,73 @@ class EmailTriageAgent(BaseAgent):
         except Exception as e:
             logger.error(f"Unprocessed emails search failed: {e}")
             return []
+    
+    async def view_inbox_messages(self, db: Session, limit: int = 20) -> Dict[str, Any]:
+        """Get and display inbox messages using the hybrid service"""
+        try:
+            # Ensure connection (this will also create folders if needed)
+            if not self.hybrid_service.is_connected():
+                connect_result = await self.hybrid_service.connect()
+                if not connect_result.get("connected"):
+                    return {
+                        "success": False,
+                        "message": connect_result.get("message", "Failed to connect to Outlook"),
+                        "connection_help": connect_result.get("help")
+                    }
+            
+            # Get messages from inbox
+            messages = await self.hybrid_service.get_messages("Inbox", limit)
+            
+            if not messages:
+                return {
+                    "success": True,
+                    "message": "Your inbox is empty or no messages could be retrieved.",
+                    "messages": [],
+                    "count": 0
+                }
+            
+            # Sync retrieved messages to database if not already present
+            synced_count = 0
+            for msg_data in messages:
+                existing = db.query(Email).filter(
+                    Email.outlook_id == msg_data.get("id")
+                ).first()
+                
+                if not existing and msg_data.get("id"):
+                    new_email = Email(
+                        outlook_id=msg_data["id"],
+                        subject=msg_data.get("subject", ""),
+                        sender=msg_data.get("sender", ""),
+                        sender_name=msg_data.get("sender_name", ""),
+                        body_content=msg_data.get("body_content", ""),
+                        body_preview=msg_data.get("body_preview", ""),
+                        received_at=msg_data.get("received_at"),
+                        sent_at=msg_data.get("sent_at"),
+                        is_read=msg_data.get("is_read", False),
+                        importance=msg_data.get("importance", "normal"),
+                        has_attachments=msg_data.get("has_attachments", False)
+                    )
+                    db.add(new_email)
+                    synced_count += 1
+            
+            if synced_count > 0:
+                db.commit()
+            
+            return {
+                "success": True,
+                "messages": messages,
+                "count": len(messages),
+                "synced_new": synced_count,
+                "connection_method": self.hybrid_service._connection_method
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to view inbox messages: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "message": "Failed to retrieve inbox messages"
+            }
     
     async def _analyze_email_with_ai(self, email: Email) -> Dict[str, Any]:
         """Analyze email using AI to extract insights and suggestions"""
