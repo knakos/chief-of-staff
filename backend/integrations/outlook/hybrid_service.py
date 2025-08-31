@@ -197,9 +197,15 @@ class HybridOutlookService:
     
     async def sync_emails(self, db: Session) -> Dict[str, Any]:
         """Sync emails using available method"""
+        logger.info(f"Starting sync_emails with connection method: {self._connection_method}")
+        logger.info(f"COM connector exists: {self.com_connector is not None}")
+        logger.info(f"COM connector connected: {self.com_connector.is_connected() if self.com_connector else False}")
+        
         if self._connection_method == "com" and self.com_connector:
+            logger.info("Using COM method to get messages...")
             # Get messages via COM and store in database
             messages = self.com_connector.get_messages(limit=100)
+            logger.info(f"COM connector returned {len(messages)} messages")
             
             synced_count = 0
             for msg_data in messages:

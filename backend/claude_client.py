@@ -10,13 +10,14 @@ import asyncio
 import time
 from functools import lru_cache
 import hashlib
-from datetime import datetime
+from datetime import datetime, timedelta
+import threading
 from anthropic import AsyncAnthropic
 
 logger = logging.getLogger(__name__)
 
 class ClaudeClient:
-    """Claude AI client with prompt management"""
+    """Claude AI client with prompt management and rate limiting"""
     
     def __init__(self):
         self.api_key = os.getenv("ANTHROPIC_API_KEY")
@@ -26,6 +27,13 @@ class ClaudeClient:
         # Response cache with TTL
         self.response_cache: Dict[str, Dict[str, Any]] = {}
         self.cache_ttl = 300  # 5 minutes cache TTL
+        
+        # Rate limiting for API calls
+        self._last_request_time = 0.0
+        self._last_activity_time = datetime.now()
+        self._request_lock = threading.Lock()
+        self._idle_timeout_minutes = 30  # Only check connection after 30 minutes idle
+        self._min_request_interval = 1.0  # Minimum 1 second between requests
         
         # Initialize Anthropic client
         self.client = AsyncAnthropic(api_key=self.api_key) if self.api_key else None
@@ -77,9 +85,42 @@ class ClaudeClient:
         
         return self.prompts_cache[prompt_key]
     
+    def update_activity(self):
+        """Update the last activity time to track user interaction"""
+        self._last_activity_time = datetime.now()
+        logger.debug("User activity updated")
+    
+    def should_check_connection(self) -> bool:
+        """Check if enough idle time has passed to warrant connection check"""
+        idle_time = datetime.now() - self._last_activity_time
+        should_check = idle_time >= timedelta(minutes=self._idle_timeout_minutes)
+        
+        if should_check:
+            logger.info(f"Idle for {idle_time}, checking AI connection")
+        else:
+            logger.debug(f"Idle for {idle_time}, skipping connection check (need {self._idle_timeout_minutes}m)")
+        
+        return should_check
+    
+    async def _apply_rate_limiting(self):
+        """Apply rate limiting to prevent API spam"""
+        with self._request_lock:
+            current_time = time.time()
+            time_since_last = current_time - self._last_request_time
+            
+            if time_since_last < self._min_request_interval:
+                sleep_time = self._min_request_interval - time_since_last
+                logger.debug(f"Rate limiting: sleeping {sleep_time:.2f}s")
+                await asyncio.sleep(sleep_time)
+            
+            self._last_request_time = time.time()
+    
     async def generate_response(self, prompt_key: str, context: Dict[str, Any] = None, user_input: str = "") -> str:
-        """Generate AI response using specified prompt with caching"""
+        """Generate AI response using specified prompt with caching and rate limiting"""
         try:
+            # Update activity timestamp when user makes a request
+            self.update_activity()
+            
             # Create cache key from inputs
             cache_key = self._create_cache_key(prompt_key, context, user_input)
             
@@ -94,6 +135,8 @@ class ClaudeClient:
             
             # Use real Claude API if key available, otherwise fallback to mock
             if self.api_key and not os.getenv("USE_MOCK_RESPONSES", "").lower() == "true":
+                # Apply rate limiting before API call
+                await self._apply_rate_limiting()
                 logger.info(f"Calling Claude API with user input: {user_input}")
                 response = await self._call_claude_api(system_prompt, context, user_input)
                 logger.info(f"Claude API response: {response[:100]}...")

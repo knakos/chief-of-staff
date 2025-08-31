@@ -122,23 +122,32 @@ class OutlookCOMConnector:
             
             # Get messages (sorted by received time, newest first)
             items = folder.Items
+            logger.info(f"Total items in {folder_name}: {items.Count}")
+            
             items.Sort("[ReceivedTime]", True)  # True = descending
             
             messages = []
             count = 0
+            processed = 0
             
             for item in items:
+                processed += 1
                 if count >= limit:
                     break
                     
                 # Only process mail items
                 if hasattr(item, 'Subject'):
+                    logger.info(f"Processing item {processed}: {getattr(item, 'Subject', 'No Subject')[:50]}")
                     message_data = self._extract_message_data(item)
                     if message_data:
                         messages.append(message_data)
                         count += 1
+                    else:
+                        logger.warning(f"Failed to extract data from item {processed}")
+                else:
+                    logger.info(f"Skipping item {processed} - no Subject attribute")
             
-            logger.info(f"Retrieved {len(messages)} messages from {folder_name}")
+            logger.info(f"Retrieved {len(messages)} messages from {folder_name} (processed {processed} items)")
             return messages
             
         except Exception as e:

@@ -13,7 +13,7 @@
 ```cmd
 # Open Command Prompt or PowerShell as Administrator
 git clone https://github.com/knakos/chief-of-staff.git
-cd chief-of-staff
+cd "CHIEF OF STAFF WIN"
 ```
 
 ### 2. Backend Setup
@@ -42,7 +42,7 @@ copy .env.example .env
 ### 3. Frontend Setup
 ```cmd
 # Open a new Command Prompt/PowerShell
-cd chief-of-staff\electron
+cd electron
 
 # Install Node.js dependencies
 npm install
@@ -52,14 +52,14 @@ npm install
 
 #### Terminal 1 - Backend:
 ```cmd
-cd chief-of-staff\backend
+cd backend
 .venv\Scripts\activate
 python -m uvicorn app:app --host 127.0.0.1 --port 8787 --reload
 ```
 
 #### Terminal 2 - Frontend:
 ```cmd
-cd chief-of-staff\electron
+cd electron
 npm run dev
 ```
 

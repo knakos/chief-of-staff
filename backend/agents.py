@@ -302,6 +302,34 @@ class COSOrchestrator(BaseAgent):
                 logger.error(f"Outlook setup error: {e}")
                 return f"Folder setup failed: {str(e)}"
         
+        elif "/outlook test" in command:
+            # Test COM connector directly
+            try:
+                hybrid_service = self.email_triage.hybrid_service
+                if hybrid_service.com_connector and hybrid_service.com_connector.is_connected():
+                    # Test inbox access
+                    folders = hybrid_service.com_connector.get_folders()
+                    inbox_info = None
+                    for folder in folders:
+                        if folder["name"] == "Inbox":
+                            inbox_info = folder
+                            break
+                    
+                    if inbox_info:
+                        # Test message retrieval
+                        test_messages = hybrid_service.com_connector.get_messages(limit=5)
+                        return f"COM Test Results:\n" \
+                               f"- Inbox found: {inbox_info['name']}\n" \
+                               f"- Inbox item count: {inbox_info['item_count']}\n" \
+                               f"- Retrieved messages: {len(test_messages)}\n" \
+                               f"- Message subjects: {[msg.get('subject', 'No subject')[:50] for msg in test_messages[:3]]}"
+                    else:
+                        return "COM Test: Inbox folder not found"
+                else:
+                    return "COM Test: COM connector not connected"
+            except Exception as e:
+                return f"COM Test failed: {str(e)}"
+
         elif "/outlook triage" in command:
             # Triage unprocessed Outlook emails
             unprocessed = await self.email_triage.get_unprocessed_outlook_emails()
@@ -367,7 +395,7 @@ class COSOrchestrator(BaseAgent):
                 return f"Error checking Outlook status: {str(e)}"
         
         else:
-            return "Available Outlook commands: /outlook connect, /outlook sync, /outlook setup, /outlook triage, /outlook status, /outlook info, /outlook disconnect"
+            return "Available Outlook commands: /outlook connect, /outlook sync, /outlook setup, /outlook triage, /outlook status, /outlook info, /outlook test, /outlook disconnect"
     
     async def _build_current_context(self, db: Session) -> Dict[str, Any]:
         """Build current context for AI interactions"""

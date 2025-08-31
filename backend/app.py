@@ -23,7 +23,7 @@ from claude_client import ClaudeClient
 from agents import COSOrchestrator
 
 # Logging setup
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
 # Load environment variables explicitly
@@ -68,15 +68,15 @@ engine = create_engine(
     echo=False  # Set to True for SQL debugging
 )
 
-# Enable WAL mode for better concurrency
-@event.listens_for(engine, "connect")
-def set_sqlite_pragma(dbapi_connection, connection_record):
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL")
-    cursor.execute("PRAGMA synchronous=NORMAL") 
-    cursor.execute("PRAGMA cache_size=10000")
-    cursor.execute("PRAGMA temp_store=MEMORY")
-    cursor.close()
+# SQLite optimizations disabled for WSL compatibility
+# @event.listens_for(engine, "connect")
+# def set_sqlite_pragma(dbapi_connection, connection_record):
+#     cursor = dbapi_connection.cursor()
+#     cursor.execute("PRAGMA journal_mode=DELETE")
+#     cursor.execute("PRAGMA synchronous=NORMAL") 
+#     cursor.execute("PRAGMA cache_size=10000")
+#     cursor.execute("PRAGMA temp_store=MEMORY")
+#     cursor.close()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Global instances
@@ -200,8 +200,10 @@ class WSMessageHandler:
             "interview:dismiss": self.handle_interview_dismiss,
             "project:create": self.handle_project_create,
             "task:create": self.handle_task_create,
+            "status:request": self.handle_status_request,
         }
         
+        logger.info(f"Received WebSocket event: {event}")
         handler = handlers.get(event)
         if handler:
             try:
@@ -222,6 +224,9 @@ class WSMessageHandler:
         if not text:
             return
 
+        # Update Claude client activity tracking
+        cos_orchestrator.claude_client.update_activity()
+        
         # Don't echo user message - frontend handles it immediately
 
         # Process with COS orchestrator
@@ -336,6 +341,81 @@ class WSMessageHandler:
             "task:created",
             {"id": task.id, "title": task.title}
         )
+
+    async def handle_status_request(self, data: Dict[str, Any]):
+        """Handle status request from frontend"""
+        logger.info("Received status request from frontend")
+        try:
+            # AI Status - only perform connection check after idle timeout
+            if claude_client and hasattr(claude_client, 'client') and claude_client.should_check_connection():
+                # Only check AI connection after idle timeout to prevent rate limiting
+                try:
+                    # Quick health check - use cached response to avoid API call
+                    ai_status = {
+                        "status": "connected",
+                        "provider": "Anthropic", 
+                        "model": "Claude-3.5-Sonnet",
+                        "last_check": "idle_timeout_reached"
+                    }
+                    logger.info("AI status: Connection check allowed after idle period")
+                except Exception as e:
+                    ai_status = {
+                        "status": "error",
+                        "error": str(e),
+                        "provider": "Anthropic",
+                        "model": "Claude-3.5-Sonnet"
+                    }
+                    logger.error(f"AI connection check failed: {e}")
+            else:
+                # Skip connection check if not idle long enough or no client
+                ai_status = {
+                    "status": "connected" if claude_client and hasattr(claude_client, 'client') else "no_client",
+                    "provider": "Anthropic",
+                    "model": "Claude-3.5-Sonnet",
+                    "check_status": "skipped_idle_timeout" if claude_client else "no_client"
+                }
+            
+            # Outlook Status - lightweight check without establishing new connections
+            outlook_status = {"status": "disconnected", "method": None}
+            try:
+                # Check existing connection state without calling connect()
+                hybrid_service = cos_orchestrator.email_triage.hybrid_service
+                
+                # Check if there's an active connection method
+                if hasattr(hybrid_service, '_connection_method') and hybrid_service._connection_method:
+                    logger.info(f"Status check: Found existing {hybrid_service._connection_method} connection")
+                    outlook_status = {
+                        "status": "connected",
+                        "method": hybrid_service._connection_method
+                    }
+                else:
+                    # Lightweight COM test without full connection
+                    from integrations.outlook.com_connector import COM_AVAILABLE
+                    if COM_AVAILABLE:
+                        try:
+                            import win32com.client
+                            # Quick test - try to get Outlook object without full connection
+                            outlook_app = win32com.client.GetActiveObject("Outlook.Application")
+                            if outlook_app:
+                                logger.info("Status check: Outlook application is running")
+                                outlook_status = {
+                                    "status": "connected",
+                                    "method": "com"
+                                }
+                        except:
+                            logger.info("Status check: Outlook application not accessible")
+                        
+            except Exception as e:
+                logger.info(f"Outlook status check failed: {e}")
+            
+            # Send status updates
+            await manager.send_to_client(self.websocket, "status:ai", ai_status)
+            await manager.send_to_client(self.websocket, "status:outlook", outlook_status)
+            
+            logger.info(f"Status update sent - AI: {ai_status['status']}, Outlook: {outlook_status['status']}")
+            
+        except Exception as e:
+            logger.error(f"Error handling status request: {e}")
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db)):

@@ -133,9 +133,56 @@
     .app-layout {
       display: grid;
       grid-template-columns: var(--sidebar-width) var(--chatbox-width) 1fr;
+      grid-template-rows: 1fr auto;
       height: 100vh;
       background: var(--bg-primary);
     }
+
+    /* Status bar */
+    .status-bar {
+      grid-column: 1 / -1;
+      background: var(--surface-base);
+      border-top: 1px solid var(--border-base);
+      padding: var(--space-2) var(--space-4);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      box-shadow: var(--shadow-lg);
+      z-index: 10;
+    }
+
+    .status-indicators {
+      display: flex;
+      gap: var(--space-6);
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .status-dot.connected { background: var(--success); }
+    .status-dot.connecting { background: var(--warning); }
+    .status-dot.disconnected { background: var(--error); }
+
+    .status-text {
+      font-family: var(--font-mono);
+      font-size: var(--font-size-xs);
+    }
+
+    .status-text.connected { color: var(--success); }
+    .status-text.connecting { color: var(--warning); }
+    .status-text.disconnected { color: var(--error); }
 
     /* Left icon sidebar */
     .icon-sidebar {
@@ -493,6 +540,8 @@
     function App() {
       const [activeSection, setActiveSection] = useState("main");
       const [connectionStatus, setConnectionStatus] = useState('connecting');
+      const [aiStatus, setAiStatus] = useState({ status: 'unknown', provider: 'Anthropic', model: 'Claude-3.5-Sonnet' });
+      const [outlookStatus, setOutlookStatus] = useState({ status: 'disconnected', method: null });
       const [messages, setMessages] = useState([]);
       const [inputText, setInputText] = useState("");
       const messagesEndRef = useRef(null);
@@ -502,16 +551,31 @@
         const ws = new WebSocket("ws://127.0.0.1:8787/ws");
         wsRef.current = ws;
         
-        ws.onopen = () => setConnectionStatus('connected');
+        ws.onopen = () => {
+          setConnectionStatus('connected');
+          // Request initial status
+          ws.send(JSON.stringify({ event: 'status:request' }));
+        };
         ws.onclose = () => setConnectionStatus('disconnected');
         ws.onerror = () => setConnectionStatus('disconnected');
         
         ws.onmessage = (event) => {
           try {
             const message = JSON.parse(event.data);
-            if (message.event === 'thread:append') {
+            
+            // Handle status updates
+            if (message.event === 'status:ai') {
+              console.log('Received AI status:', message.data);
+              setAiStatus(message.data);
+            } else if (message.event === 'status:outlook') {
+              console.log('Received Outlook status:', message.data);
+              setOutlookStatus(message.data);
+            } else if (message.event === 'thread:append') {
               const newMessage = message.data.message;
               if (newMessage.role === 'agent') {
+                // AI is working, update status
+                setAiStatus(prev => ({ ...prev, status: 'connected' }));
+                
                 // Remove thinking indicator and add AI message
                 setMessages(prev => {
                   // Filter out thinking indicators
@@ -543,6 +607,20 @@
           wsRef.current = null;
           ws.close();
         };
+      }, []);
+
+      // Periodic status checking
+      useEffect(() => {
+        const statusInterval = setInterval(() => {
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            console.log('Sending status request...');
+            wsRef.current.send(JSON.stringify({ event: 'status:request' }));
+          } else {
+            console.log('WebSocket not ready for status request');
+          }
+        }, 10000); // Check every 10 seconds
+
+        return () => clearInterval(statusInterval);
       }, []);
 
       useEffect(() => {
@@ -610,6 +688,59 @@
           e.preventDefault();
           sendMessage();
         }
+      };
+
+      // Status bar component
+      const StatusBar = () => {
+        const formatAiStatus = () => {
+          if (aiStatus.status === 'connected') {
+            return `${aiStatus.provider} | ${aiStatus.model}`;
+          } else if (aiStatus.status === 'connecting') {
+            return `${aiStatus.provider} | Connecting...`;
+          } else {
+            return `${aiStatus.provider} | Disconnected`;
+          }
+        };
+
+        const formatOutlookStatus = () => {
+          if (outlookStatus.status === 'connected' && outlookStatus.method) {
+            return `Outlook:${outlookStatus.method.toUpperCase()}`;
+          } else if (outlookStatus.status === 'connecting') {
+            return 'Outlook:Connecting...';
+          } else {
+            return 'Outlook:Disconnected';
+          }
+        };
+
+        return React.createElement('div', { className: 'status-bar' },
+          React.createElement('div', { className: 'status-indicators' },
+            // AI Status
+            React.createElement('div', { className: 'status-indicator' },
+              React.createElement('div', { 
+                className: `status-dot ${aiStatus.status}`,
+                title: `AI Status: ${aiStatus.status}`
+              }),
+              React.createElement('span', { 
+                className: `status-text ${aiStatus.status}` 
+              }, formatAiStatus())
+            ),
+            // Outlook Status  
+            React.createElement('div', { className: 'status-indicator' },
+              React.createElement('div', { 
+                className: `status-dot ${outlookStatus.status}`,
+                title: `Outlook Status: ${outlookStatus.status}`
+              }),
+              React.createElement('span', { 
+                className: `status-text ${outlookStatus.status}` 
+              }, formatOutlookStatus())
+            )
+          ),
+          React.createElement('div', { className: 'status-info' },
+            React.createElement('span', { className: 'text-muted' }, 
+              `Backend ${connectionStatus}`
+            )
+          )
+        );
       };
 
       return React.createElement('div', { className: 'app-layout' },
@@ -727,7 +858,10 @@
               )
             )
           )
-        )
+        ),
+        
+        // Status bar at bottom
+        React.createElement(StatusBar)
       );
     }
 
