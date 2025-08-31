@@ -7,7 +7,12 @@
       "Bash(./setup_backend.sh:*)",
       "Bash(source:*)",
       "Bash(./.venv/bin/python -m pip install:*)",
-      "Bash(./.venv/bin/python:*)"
+      "Bash(./.venv/bin/python:*)",
+      "Bash(python:*)",
+      "Bash(pip install:*)",
+      "Bash(./scripts/start_all.sh:*)",
+      "Bash(npm install)",
+      "Bash(npm run dev:*)"
     ],
     "deny": [],
     "ask": []

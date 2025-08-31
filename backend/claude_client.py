@@ -51,7 +51,7 @@ class ClaudeClient:
         
         logger.info(f"Loaded {len(self.prompts_cache)} prompts")
     
-@lru_cache(maxsize=128)
+    @lru_cache(maxsize=128)
     def get_prompt(self, prompt_key: str) -> str:
         """Get a prompt by key (e.g., 'system/cos' or 'tools/digest')"""
         if prompt_key not in self.prompts_cache:
