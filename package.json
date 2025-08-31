@@ -1,0 +1,16 @@
+{
+  "name": "chief-of-staff",
+  "version": "1.0.0",
+  "description": "See `GuideForAssistant.md` for step-by-step tasks.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev":  "electron ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^37.4.0"
+  }
+}

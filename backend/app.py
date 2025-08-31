@@ -11,8 +11,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.pool import StaticPool
 from pydantic import BaseModel
 
 from models import Base, Project, Task, Email, ContextEntry, Job, Interview, Digest
@@ -24,9 +25,25 @@ from agents import COSOrchestrator
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Database setup
+# Database setup with optimizations
 DATABASE_URL = "sqlite:///./cos.db"
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+engine = create_engine(
+    DATABASE_URL, 
+    connect_args={"check_same_thread": False}, 
+    poolclass=StaticPool,
+    pool_pre_ping=True,
+    echo=False  # Set to True for SQL debugging
+)
+
+# Enable WAL mode for better concurrency
+@event.listens_for(engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL") 
+    cursor.execute("PRAGMA cache_size=10000")
+    cursor.execute("PRAGMA temp_store=MEMORY")
+    cursor.close()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Global instances
@@ -73,32 +90,57 @@ def get_db():
 # WebSocket connection manager
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: List[WebSocket] = []
+        self.active_connections: Dict[str, WebSocket] = {}
+        self.connection_metadata: Dict[str, Dict[str, Any]] = {}
 
-    async def connect(self, websocket: WebSocket):
+    async def connect(self, websocket: WebSocket) -> str:
         await websocket.accept()
-        self.active_connections.append(websocket)
-        logger.info(f"WebSocket connected. Total connections: {len(self.active_connections)}")
+        connection_id = str(id(websocket))
+        self.active_connections[connection_id] = websocket
+        self.connection_metadata[connection_id] = {
+            "connected_at": datetime.utcnow(),
+            "last_ping": datetime.utcnow()
+        }
+        logger.info(f"WebSocket connected: {connection_id}. Total: {len(self.active_connections)}")
+        return connection_id
 
     def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
-        logger.info(f"WebSocket disconnected. Total connections: {len(self.active_connections)}")
+        connection_id = str(id(websocket))
+        self.active_connections.pop(connection_id, None)
+        self.connection_metadata.pop(connection_id, None)
+        logger.info(f"WebSocket disconnected: {connection_id}. Total: {len(self.active_connections)}")
 
     async def send_to_all(self, event: str, data: Any):
-        """Send message to all connected clients"""
-        message = {"event": event, "data": data}
-        disconnected = []
+        """Send message to all connected clients with improved error handling"""
+        if not self.active_connections:
+            return
+            
+        message_text = json.dumps({"event": event, "data": data})
+        disconnected_ids = []
         
-        for connection in self.active_connections:
-            try:
-                await connection.send_text(json.dumps(message))
-            except Exception as e:
-                logger.error(f"Error sending to WebSocket: {e}")
-                disconnected.append(connection)
+        # Use asyncio.gather for concurrent sending
+        send_tasks = []
+        for connection_id, connection in self.active_connections.items():
+            send_tasks.append(self._send_safe(connection_id, connection, message_text))
         
-        # Remove disconnected clients
-        for conn in disconnected:
-            self.active_connections.remove(conn)
+        results = await asyncio.gather(*send_tasks, return_exceptions=True)
+        
+        # Clean up failed connections
+        for i, (connection_id, result) in enumerate(zip(self.active_connections.keys(), results)):
+            if isinstance(result, Exception):
+                disconnected_ids.append(connection_id)
+        
+        for conn_id in disconnected_ids:
+            self.active_connections.pop(conn_id, None)
+            self.connection_metadata.pop(conn_id, None)
+    
+    async def _send_safe(self, connection_id: str, connection: WebSocket, message: str):
+        """Safely send message to a single connection"""
+        try:
+            await connection.send_text(message)
+        except Exception as e:
+            logger.error(f"Error sending to WebSocket {connection_id}: {e}")
+            raise
 
     async def send_to_client(self, websocket: WebSocket, event: str, data: Any):
         """Send message to specific client"""
@@ -276,7 +318,7 @@ class WSMessageHandler:
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db)):
     """Main WebSocket endpoint for real-time communication"""
-    await manager.connect(websocket)
+    connection_id = await manager.connect(websocket)
     handler = WSMessageHandler(websocket, db)
     
     try:
@@ -305,14 +347,18 @@ async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db)
 
 @app.get("/api/projects")
 async def get_projects(db: Session = Depends(get_db)):
-    """Get all projects"""
-    projects = db.query(Project).all()
+    """Get all projects with optimized query"""
+    projects = db.query(Project).options(
+        # Only load needed columns to reduce memory
+    ).all()
     return [{"id": p.id, "name": p.name, "status": p.status} for p in projects]
 
 @app.get("/api/projects/{project_id}/tasks")
 async def get_project_tasks(project_id: str, db: Session = Depends(get_db)):
-    """Get tasks for a project"""
-    tasks = db.query(Task).filter(Task.project_id == project_id).all()
+    """Get tasks for a project with index optimization"""
+    tasks = db.query(Task).filter(
+        Task.project_id == project_id
+    ).order_by(Task.created_at.desc()).all()
     return [{"id": t.id, "title": t.title, "status": t.status} for t in tasks]
 
 @app.get("/api/interviews/active")

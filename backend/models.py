@@ -4,7 +4,7 @@ Core entities: Projects, Tasks, Emails, Context, Jobs
 """
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from sqlalchemy import Column, String, DateTime, Text, Integer, Float, Boolean, ForeignKey, JSON
+from sqlalchemy import Column, String, DateTime, Text, Integer, Float, Boolean, ForeignKey, JSON, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.sqlite import JSON as SQLiteJSON
@@ -21,7 +21,7 @@ class Project(Base):
     id = Column(String, primary_key=True, default=new_id)
     name = Column(String, nullable=False)
     description = Column(Text)
-    status = Column(String, default="active")  # active, paused, completed, archived
+    status = Column(String, default="active", index=True)  # active, paused, completed, archived
     priority = Column(Integer, default=3)  # 1=high, 5=low
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -37,14 +37,14 @@ class Task(Base):
     id = Column(String, primary_key=True, default=new_id)
     title = Column(String, nullable=False)
     description = Column(Text)
-    status = Column(String, default="pending")  # pending, in_progress, completed, blocked
+    status = Column(String, default="pending", index=True)  # pending, in_progress, completed, blocked
     priority = Column(Integer, default=3)
     due_date = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime)
     
     # Foreign keys
-    project_id = Column(String, ForeignKey("projects.id"))
+    project_id = Column(String, ForeignKey("projects.id"), index=True)
     parent_task_id = Column(String, ForeignKey("tasks.id"))
     
     # Relationships
@@ -57,8 +57,8 @@ class Email(Base):
     __tablename__ = "emails"
     
     id = Column(String, primary_key=True, default=new_id)
-    thread_id = Column(String)  # Outlook thread ID
-    message_id = Column(String)  # Outlook message ID
+    thread_id = Column(String, index=True)  # Outlook thread ID
+    message_id = Column(String, unique=True, index=True)  # Outlook message ID
     subject = Column(String)
     sender = Column(String)
     recipients = Column(Text)  # JSON array of recipients
@@ -68,13 +68,13 @@ class Email(Base):
     processed_at = Column(DateTime)
     
     # COS metadata
-    project_id = Column(String, ForeignKey("projects.id"))
+    project_id = Column(String, ForeignKey("projects.id"), index=True)
     confidence = Column(Float)  # Confidence in project assignment
     provenance = Column(String)  # How this assignment was made
     linked_at = Column(DateTime)
     
     # Processing status
-    status = Column(String, default="unprocessed")  # unprocessed, triaged, archived
+    status = Column(String, default="unprocessed", index=True)  # unprocessed, triaged, archived
     folder = Column(String)  # @Action, @Waiting, etc.
     categories = Column(Text)  # JSON array of categories
     
@@ -130,6 +130,11 @@ class Job(Base):
     error_message = Column(Text)
     progress = Column(Float, default=0.0)  # 0.0 to 1.0
     
+    __table_args__ = (
+        Index('idx_job_status_type', 'status', 'type'),
+        Index('idx_job_created', 'created_at'),
+    )
+    
     # Relationships - jobs can be related to projects/emails
     related_project_id = Column(String, ForeignKey("projects.id"))
     related_email_id = Column(String, ForeignKey("emails.id"))
@@ -138,7 +143,7 @@ class Interview(Base):
     __tablename__ = "interviews"
     
     id = Column(String, primary_key=True, default=new_id)
-    status = Column(String, default="pending")  # pending, active, completed, dismissed
+    status = Column(String, default="pending", index=True)  # pending, active, completed, dismissed
     question = Column(Text, nullable=False)
     answer = Column(Text)
     asked_at = Column(DateTime, default=datetime.utcnow)
@@ -150,7 +155,7 @@ class Interview(Base):
     importance_score = Column(Float, default=0.5)
     
     # Relationships
-    project_id = Column(String, ForeignKey("projects.id"))
+    project_id = Column(String, ForeignKey("projects.id"), index=True)
     related_email_id = Column(String, ForeignKey("emails.id"))
 
 class Digest(Base):

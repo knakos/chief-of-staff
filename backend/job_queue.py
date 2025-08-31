@@ -11,6 +11,8 @@ import json
 
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy import create_engine
+from sqlalchemy.pool import StaticPool
+from contextlib import asynccontextmanager
 from models import Job
 
 logger = logging.getLogger(__name__)
@@ -31,9 +33,15 @@ class JobQueue:
         self.worker_task: Optional[asyncio.Task] = None
         self.is_running = False
         
-        # Database setup
+        # Database setup with connection pooling
         DATABASE_URL = "sqlite:///./cos.db"
-        self.engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+        self.engine = create_engine(
+            DATABASE_URL, 
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+            pool_pre_ping=True,
+            echo=False
+        )
         self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
         
         # Register built-in job types
@@ -82,9 +90,8 @@ class JobQueue:
         logger.info("Job queue stopped")
     
     async def add_job(self, job_type: str, data: Dict[str, Any], priority: int = 3) -> Job:
-        """Add a new job to the queue"""
-        db = self.SessionLocal()
-        try:
+        """Add a new job to the queue with async db operations"""
+        async with self._get_db() as db:
             # Create job record
             job = Job(
                 type=job_type,
@@ -93,31 +100,36 @@ class JobQueue:
                 input_data=data
             )
             db.add(job)
-            db.commit()
-            db.refresh(job)
+            await asyncio.get_event_loop().run_in_executor(None, db.commit)
+            await asyncio.get_event_loop().run_in_executor(None, db.refresh, job)
             
             # Add to in-memory queue
             await self.queue.put(job.id)
             
             logger.info(f"Added job {job.id} of type {job_type}")
             return job
-            
+    
+    @asynccontextmanager
+    async def _get_db(self):
+        """Async context manager for database sessions"""
+        db = self.SessionLocal()
+        try:
+            yield db
         finally:
             db.close()
     
     async def _load_pending_jobs(self):
         """Load pending jobs from database on startup"""
-        db = self.SessionLocal()
-        try:
-            pending_jobs = db.query(Job).filter(Job.status == JobStatus.PENDING.value).all()
+        async with self._get_db() as db:
+            pending_jobs = await asyncio.get_event_loop().run_in_executor(
+                None, 
+                lambda: db.query(Job).filter(Job.status == JobStatus.PENDING.value).all()
+            )
             
             for job in pending_jobs:
                 await self.queue.put(job.id)
             
             logger.info(f"Loaded {len(pending_jobs)} pending jobs")
-            
-        finally:
-            db.close()
     
     async def _worker_loop(self):
         """Main worker loop that processes jobs"""
@@ -139,11 +151,13 @@ class JobQueue:
                 await asyncio.sleep(1)
     
     async def _process_job(self, job_id: str):
-        """Process a single job"""
-        db = self.SessionLocal()
-        try:
+        """Process a single job with improved async handling"""
+        async with self._get_db() as db:
             # Get job from database
-            job = db.query(Job).filter(Job.id == job_id).first()
+            job = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: db.query(Job).filter(Job.id == job_id).first()
+            )
             if not job:
                 logger.warning(f"Job {job_id} not found in database")
                 return
@@ -160,7 +174,7 @@ class JobQueue:
             # Update job status to running
             job.status = JobStatus.RUNNING.value
             job.started_at = datetime.utcnow()
-            db.commit()
+            await asyncio.get_event_loop().run_in_executor(None, db.commit)
             
             logger.info(f"Processing job {job_id} of type {job.type}")
             
@@ -176,27 +190,24 @@ class JobQueue:
                 job.completed_at = datetime.utcnow()
                 job.progress = 1.0
                 job.result_data = result if isinstance(result, dict) else {"result": result}
-                db.commit()
+                await asyncio.get_event_loop().run_in_executor(None, db.commit)
                 
                 logger.info(f"Job {job_id} completed successfully")
                 
             except asyncio.CancelledError:
                 job.status = JobStatus.FAILED.value
                 job.error_message = "Job was cancelled"
-                db.commit()
+                await asyncio.get_event_loop().run_in_executor(None, db.commit)
                 logger.info(f"Job {job_id} was cancelled")
                 
             except Exception as e:
                 job.status = JobStatus.FAILED.value
                 job.error_message = str(e)
-                db.commit()
+                await asyncio.get_event_loop().run_in_executor(None, db.commit)
                 logger.error(f"Job {job_id} failed: {e}")
             
             finally:
                 self.running_jobs.pop(job_id, None)
-                
-        finally:
-            db.close()
     
     async def get_job_status(self, job_id: str) -> Optional[Dict[str, Any]]:
         """Get current status of a job"""

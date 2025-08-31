@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Chief of Staff</title>
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>body{font-family:system-ui,sans-serif;margin:2rem}.card{padding:1rem 1.25rem;border:1px solid #ddd;border-radius:8px}.muted{color:#666}</style>
+</head>
+<body>
+  <h1>Chief of Staff</h1>
+  <div class="card">
+    <p>hello! your Electron app is running.</p>
+    <p class="muted">preload api version: <span id="ver"></span></p>
+  </div>
+  <script>document.getElementById('ver').textContent = (window.api&&window.api.version)||'n/a';</script>
+</body>
+</html>
