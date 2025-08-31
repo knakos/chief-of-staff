@@ -9,8 +9,9 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import StaticPool
@@ -24,6 +25,38 @@ from agents import COSOrchestrator
 # Logging setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Load environment variables explicitly
+import os
+from dotenv import load_dotenv
+
+# Load .env file
+env_loaded = load_dotenv()
+logger.info(f"Environment file loading: {'SUCCESS' if env_loaded else 'FAILED'}")
+
+# Debug environment variables loading
+logger.info("Environment variables check:")
+logger.info(f"  MICROSOFT_CLIENT_ID: {'SET' if os.getenv('MICROSOFT_CLIENT_ID') else 'NOT SET'}")
+logger.info(f"  MICROSOFT_CLIENT_SECRET: {'SET' if os.getenv('MICROSOFT_CLIENT_SECRET') else 'NOT SET'}")
+logger.info(f"  MICROSOFT_TENANT_ID: {os.getenv('MICROSOFT_TENANT_ID', 'NOT SET')}")
+logger.info(f"  Current working directory: {os.getcwd()}")
+logger.info(f"  .env file exists: {os.path.exists('.env')}")
+
+# Try to load .env file manually if it exists
+if os.path.exists('.env'):
+    logger.info("Found .env file, checking contents...")
+    try:
+        with open('.env', 'r') as f:
+            lines = f.readlines()
+            for i, line in enumerate(lines, 1):
+                if 'MICROSOFT_CLIENT_ID' in line and not line.strip().startswith('#'):
+                    logger.info(f"  Line {i}: {line.strip()}")
+                elif 'MICROSOFT_CLIENT_SECRET' in line and not line.strip().startswith('#'):
+                    logger.info(f"  Line {i}: MICROSOFT_CLIENT_SECRET=[REDACTED] (length: {len(line.split('=', 1)[1].strip()) if '=' in line else 0})")
+    except Exception as e:
+        logger.error(f"Error reading .env file: {e}")
+else:
+    logger.warning("No .env file found in current directory")
 
 # Database setup with optimizations
 DATABASE_URL = "sqlite:///./cos.db"
@@ -406,6 +439,101 @@ async def debug_prompts():
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+
+# OAuth callback endpoint for Outlook integration
+@app.get("/auth/callback")
+async def oauth_callback(request: Request, code: str = None, state: str = None, error: str = None):
+    """Handle OAuth2 callback from Microsoft"""
+    if error:
+        return HTMLResponse(f"""
+        <html>
+            <head><title>Authorization Error</title></head>
+            <body>
+                <h1>Authorization Failed</h1>
+                <p>Error: {error}</p>
+                <p>Please try again or check your app configuration.</p>
+                <script>
+                    setTimeout(() => window.close(), 3000);
+                </script>
+            </body>
+        </html>
+        """)
+    
+    if not code or not state:
+        return HTMLResponse("""
+        <html>
+            <head><title>Invalid Request</title></head>
+            <body>
+                <h1>Invalid Authorization Request</h1>
+                <p>Missing authorization code or state parameter.</p>
+                <script>
+                    setTimeout(() => window.close(), 3000);
+                </script>
+            </body>
+        </html>
+        """)
+    
+    try:
+        # Exchange authorization code for token
+        from integrations.outlook.auth import OutlookAuthManager
+        auth_manager = OutlookAuthManager()
+        
+        logger.info(f"OAuth callback - code: {code[:20]}..., state: {state}")
+        token_data = await auth_manager.exchange_code_for_token(code, state)
+        
+        return HTMLResponse("""
+        <html>
+            <head><title>Authorization Successful</title></head>
+            <body>
+                <h1>✅ Outlook Connected Successfully!</h1>
+                <p>You can now close this window and return to Chief of Staff.</p>
+                <p>Try typing <code>/outlook status</code> to confirm the connection.</p>
+                <script>
+                    setTimeout(() => window.close(), 5000);
+                </script>
+            </body>
+        </html>
+        """)
+        
+    except Exception as e:
+        logger.error(f"OAuth callback error: {e}")
+        return HTMLResponse(f"""
+        <html>
+            <head><title>Authorization Error</title></head>
+            <body>
+                <h1>Authorization Failed</h1>
+                <p>Error exchanging authorization code: {str(e)}</p>
+                <p>Please try again or check your configuration.</p>
+                <script>
+                    setTimeout(() => window.close(), 3000);
+                </script>
+            </body>
+        </html>
+        """)
+
+@app.get("/auth/status")
+async def auth_status():
+    """Check Outlook authentication status"""
+    try:
+        from integrations.outlook.auth import OutlookAuthManager
+        auth_manager = OutlookAuthManager()
+        
+        if auth_manager.is_authenticated():
+            token_info = auth_manager.get_token_info()
+            return {
+                "authenticated": True,
+                "expires_at": token_info.get("expires_at"),
+                "token_type": token_info.get("token_type")
+            }
+        else:
+            auth_url, state = auth_manager.get_authorization_url()
+            return {
+                "authenticated": False,
+                "auth_url": auth_url
+            }
+            
+    except Exception as e:
+        return {"authenticated": False, "error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn

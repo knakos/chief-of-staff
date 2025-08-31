@@ -59,13 +59,26 @@ class Email(Base):
     id = Column(String, primary_key=True, default=new_id)
     thread_id = Column(String, index=True)  # Outlook thread ID
     message_id = Column(String, unique=True, index=True)  # Outlook message ID
+    outlook_id = Column(String, unique=True, index=True)  # Microsoft Graph message ID
     subject = Column(String)
     sender = Column(String)
+    sender_name = Column(String)  # Display name of sender
     recipients = Column(Text)  # JSON array of recipients
     body_preview = Column(Text)
     body_content = Column(Text)
+    body_content_type = Column(String, default="text")  # text or html
     received_at = Column(DateTime)
+    sent_at = Column(DateTime)
     processed_at = Column(DateTime)
+    last_synced_at = Column(DateTime)  # When last synced from Outlook
+    
+    # Email properties
+    is_read = Column(Boolean, default=False)
+    importance = Column(String, default="normal")  # normal, low, high
+    has_attachments = Column(Boolean, default=False)
+    conversation_id = Column(String, index=True)
+    internet_message_id = Column(String)
+    web_link = Column(String)
     
     # COS metadata
     project_id = Column(String, ForeignKey("projects.id"), index=True)

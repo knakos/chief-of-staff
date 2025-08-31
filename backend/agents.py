@@ -10,6 +10,12 @@ from sqlalchemy.orm import Session
 from models import Project, Task, Email, ContextEntry, Interview, Digest
 from claude_client import ClaudeClient
 from job_queue import JobQueue
+from integrations.outlook.connector import GraphAPIConnector
+from integrations.outlook.auth import OutlookAuthManager
+from integrations.outlook.sync_service import EmailSyncService
+from integrations.outlook.folder_manager import GTDFolderManager
+from integrations.outlook.extended_props import COSExtendedPropsManager
+from integrations.outlook.hybrid_service import HybridOutlookService
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +55,7 @@ class COSOrchestrator(BaseAgent):
     async def _handle_command(self, command: str, db: Session) -> str:
         """Handle slash commands"""
         command_lower = command.lower()
+        logger.info(f"_handle_command received: '{command_lower}'")
         
         if "/plan" in command_lower:
             return await self._generate_plan(db)
@@ -60,8 +67,10 @@ class COSOrchestrator(BaseAgent):
             return await self._generate_digest(db)
         elif "/interview" in command_lower:
             return await self._start_interview(db)
+        elif "/outlook" in command_lower:
+            return await self._handle_outlook_command(command_lower, db)
         else:
-            return f"Unknown command: {command}. Available commands: /plan, /summarize, /triage, /digest, /interview"
+            return f"Unknown command: {command}. Available commands: /plan, /summarize, /triage, /digest, /interview, /outlook"
     
     async def _handle_conversation(self, user_input: str, db: Session) -> str:
         """Handle conversational input"""
@@ -103,25 +112,58 @@ class COSOrchestrator(BaseAgent):
         return await self.claude_client.generate_response("system/cos", context=context, user_input="/summarize")
     
     async def _triage_inbox(self, db: Session) -> str:
-        """Trigger email triage process"""
+        """Trigger email triage process for both local and Outlook emails"""
         # Add email scan job to queue
         await self.job_queue.add_job("email_scan", {})
         
-        # Get immediate results for user feedback
-        unprocessed_emails = db.query(Email).filter(Email.status == "unprocessed").all()
+        # Get local unprocessed emails
+        local_unprocessed = db.query(Email).filter(Email.status == "unprocessed").all()
         
-        if not unprocessed_emails:
+        # Get Outlook unprocessed emails if authenticated
+        outlook_unprocessed = []
+        if self.email_triage.auth_manager.is_authenticated():
+            outlook_unprocessed = await self.email_triage.get_unprocessed_outlook_emails()
+        
+        total_unprocessed = len(local_unprocessed) + len(outlook_unprocessed)
+        
+        if total_unprocessed == 0:
             return "Inbox is already up to date. No new emails to process."
         
-        # Process a few emails immediately for demo
+        # Process local emails
         processed_count = 0
-        for email in unprocessed_emails[:5]:  # Process first 5
-            result = await self.email_triage.process_email(email, db)
+        for email in local_unprocessed[:5]:  # Process first 5 local emails
+            if hasattr(email, 'outlook_id') and email.outlook_id:
+                # Use Outlook-enhanced triage for emails with Outlook ID
+                result = await self.email_triage.triage_outlook_email(email, db)
+            else:
+                # Use standard triage for local-only emails
+                result = await self.email_triage.process_email(email, db)
             processed_count += 1
+        
+        # Process some Outlook emails
+        for outlook_email in outlook_unprocessed[:3]:  # Process first 3 Outlook emails
+            # Check if email already exists locally
+            existing = db.query(Email).filter(Email.outlook_id == outlook_email["id"]).first()
+            if not existing:
+                # Create local email record
+                local_email = Email(
+                    outlook_id=outlook_email["id"],
+                    subject=outlook_email.get("subject", ""),
+                    sender=outlook_email.get("from", {}).get("emailAddress", {}).get("address", ""),
+                    body_preview=outlook_email.get("bodyPreview", ""),
+                    received_at=datetime.utcnow()
+                )
+                db.add(local_email)
+                db.commit()
+                
+                # Triage with Outlook integration
+                await self.email_triage.triage_outlook_email(local_email, db)
+                processed_count += 1
         
         context = {
             "processed_count": processed_count,
-            "total_unprocessed": len(unprocessed_emails),
+            "total_unprocessed": total_unprocessed,
+            "outlook_connected": self.email_triage.auth_manager.is_authenticated(),
             "request_type": "triage"
         }
         
@@ -163,6 +205,103 @@ class COSOrchestrator(BaseAgent):
         db.commit()
         
         return f"Context Interview Question:\n\n{question}\n\n(You can answer this later - it helps me understand your priorities better)"
+    
+    async def _handle_outlook_command(self, command: str, db: Session) -> str:
+        """Handle Outlook-specific commands"""
+        logger.info(f"_handle_outlook_command called with: {command}")
+        
+        if "/outlook connect" in command:
+            # Try hybrid connection (COM first, then Graph API)
+            try:
+                result = await self.email_triage.hybrid_service.connect()
+                return f"Connection attempt: {result['message']} (Method: {result.get('method', 'None')})"
+            except Exception as e:
+                logger.error(f"Hybrid connection failed: {e}")
+                return f"Connection failed: {str(e)}"
+        
+        elif "/outlook sync" in command:
+            # Sync emails from Outlook
+            result = await self.email_triage.sync_outlook_emails(db)
+            if result["success"]:
+                return f"Outlook sync completed: {result['synced_count']} emails processed"
+            else:
+                return f"Outlook sync failed: {result['error']}"
+        
+        elif "/outlook setup" in command:
+            # Setup GTD folders
+            result = await self.email_triage.setup_outlook_folders()
+            if result["success"]:
+                folders = ', '.join(result["folders_created"].keys())
+                return f"GTD folder structure created in Outlook: {folders}"
+            else:
+                return f"Folder setup failed: {result['error']}"
+        
+        elif "/outlook triage" in command:
+            # Triage unprocessed Outlook emails
+            unprocessed = await self.email_triage.get_unprocessed_outlook_emails()
+            if not unprocessed:
+                return "No unprocessed emails found in Outlook"
+            
+            processed_count = 0
+            for outlook_email in unprocessed[:10]:  # Process first 10
+                # Convert Outlook email to local Email object for processing
+                local_email = Email(
+                    outlook_id=outlook_email["id"],
+                    subject=outlook_email.get("subject", ""),
+                    sender=outlook_email.get("from", {}).get("emailAddress", {}).get("address", ""),
+                    body_preview=outlook_email.get("bodyPreview", ""),
+                    received_at=datetime.utcnow()
+                )
+                db.add(local_email)
+                db.commit()
+                
+                # Triage with Outlook integration
+                await self.email_triage.triage_outlook_email(local_email, db)
+                processed_count += 1
+            
+            return f"Processed {processed_count} unprocessed emails with GTD categorization and COS properties"
+        
+        elif "/outlook disconnect" in command:
+            # Disconnect current Outlook account
+            try:
+                self.email_triage.auth_manager.revoke_tokens()
+                return "Outlook account disconnected. Use /outlook status to connect a different account."
+            except Exception as e:
+                logger.error(f"Error disconnecting Outlook: {e}")
+                return f"Error disconnecting Outlook: {str(e)}"
+        
+        elif "/outlook info" in command:
+            # Get detailed connection info
+            try:
+                connection_info = self.email_triage.hybrid_service.get_connection_info()
+                return f"Connection Info:\nMethod: {connection_info['method']}\nStatus: {connection_info['status']}\n{connection_info.get('help', '')}"
+            except Exception as e:
+                logger.error(f"Error getting connection info: {e}")
+                return f"Error getting connection info: {str(e)}"
+        
+        elif "/outlook status" in command:
+            # Get Outlook integration status (legacy Graph API)
+            logger.info("Processing /outlook status command")
+            try:
+                is_authenticated = self.email_triage.auth_manager.is_authenticated()
+                logger.info(f"Authentication status: {is_authenticated}")
+                
+                if is_authenticated:
+                    token_info = self.email_triage.auth_manager.get_token_info()
+                    logger.info(f"Token info retrieved: {token_info}")
+                    return f"Graph API connected. Token expires: {token_info['expires_at']}\n\nTip: Use '/outlook connect' to try COM connection first."
+                else:
+                    auth_url, state = self.email_triage.auth_manager.get_authorization_url()
+                    logger.info(f"Generated auth URL: {auth_url[:100]}...")
+                    response_message = f"Graph API not connected. Please visit: {auth_url}\n\nAlternatively, use '/outlook connect' to try COM connection if Outlook is running locally."
+                    logger.info(f"Returning response message (first 200 chars): {response_message[:200]}...")
+                    return response_message
+            except Exception as e:
+                logger.error(f"Error processing /outlook status: {e}")
+                return f"Error checking Outlook status: {str(e)}"
+        
+        else:
+            return "Available Outlook commands: /outlook connect, /outlook sync, /outlook setup, /outlook triage, /outlook status, /outlook info, /outlook disconnect"
     
     async def _build_current_context(self, db: Session) -> Dict[str, Any]:
         """Build current context for AI interactions"""
@@ -257,38 +396,218 @@ class ContextorAgent(BaseAgent):
         return questions
 
 class EmailTriageAgent(BaseAgent):
-    """Agent responsible for email processing and triage"""
+    """Agent responsible for email processing and triage with Outlook integration"""
+    
+    def __init__(self, claude_client: ClaudeClient):
+        super().__init__(claude_client)
+        
+        # Initialize Outlook services (hybrid with COM fallback)
+        self.hybrid_service = HybridOutlookService()
+        
+        # Legacy services (still available for direct Graph API access)
+        self.graph_connector = GraphAPIConnector()
+        self.auth_manager = OutlookAuthManager()
+        self.sync_service = EmailSyncService(self.graph_connector, self.auth_manager)
+        self.folder_manager = GTDFolderManager(self.graph_connector, self.auth_manager)
+        self.extended_props = COSExtendedPropsManager(self.graph_connector, self.auth_manager)
     
     async def process_email(self, email: Email, db: Session) -> Dict[str, Any]:
         """Process a single email - triage, categorize, extract info"""
         logger.info(f"Processing email: {email.subject}")
         
-        # Generate email summary
-        summary_data = await self.claude_client.generate_email_summary(
-            email.body_content or email.body_preview or "",
-            email.subject or ""
-        )
+        # Generate email analysis using AI
+        email_analysis = await self._analyze_email_with_ai(email)
         
         # Update email with AI-generated content
-        email.summary = summary_data["summary"]
+        email.summary = email_analysis.get("summary", "")
         email.status = "triaged"
         
-        # Generate suggestions
-        suggestions = await self.claude_client.generate_suggestions({
-            "email_subject": email.subject,
-            "email_content": email.body_preview,
-            "sender": email.sender
-        })
-        
+        # Store suggested actions
         import json
-        email.suggested_actions = json.dumps(suggestions)
+        email.suggested_actions = json.dumps(email_analysis.get("suggestions", []))
         
         db.commit()
         
         return {
             "email_id": email.id,
-            "summary": summary_data,
-            "suggestions": suggestions
+            "analysis": email_analysis,
+            "outlook_integration_ready": hasattr(email, 'outlook_id') and email.outlook_id is not None
+        }
+    
+    async def sync_outlook_emails(self, db: Session, user_id: str = "default", 
+                                 initial_sync: bool = False) -> Dict[str, Any]:
+        """Sync emails from Outlook"""
+        try:
+            if initial_sync:
+                synced_emails = await self.sync_service.initial_sync(db, user_id)
+            else:
+                synced_emails = await self.sync_service.delta_sync(db, user_id)
+            
+            return {
+                "success": True,
+                "synced_count": len(synced_emails),
+                "emails": synced_emails
+            }
+        except Exception as e:
+            logger.error(f"Outlook sync failed: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    async def setup_outlook_folders(self, user_id: str = "default") -> Dict[str, Any]:
+        """Setup GTD folder structure in Outlook"""
+        try:
+            folder_ids = await self.folder_manager.setup_gtd_folders(user_id)
+            return {
+                "success": True,
+                "folders_created": folder_ids
+            }
+        except Exception as e:
+            logger.error(f"Folder setup failed: {e}")
+            return {
+                "success": False, 
+                "error": str(e)
+            }
+    
+    async def triage_outlook_email(self, email: Email, db: Session, 
+                                  user_id: str = "default") -> Dict[str, Any]:
+        """Triage an email with Outlook-specific actions"""
+        if not hasattr(email, 'outlook_id') or not email.outlook_id:
+            return await self.process_email(email, db)
+        
+        # Analyze email with AI
+        email_analysis = await self._analyze_email_with_ai(email)
+        
+        # Get GTD recommendation
+        gtd_category = self.folder_manager.get_gtd_recommendation(email_analysis)
+        
+        # Apply Outlook actions based on analysis
+        outlook_actions = []
+        
+        try:
+            # Move to appropriate GTD folder
+            move_result = await self.folder_manager.move_email_to_gtd_folder(
+                email.outlook_id, gtd_category, user_id
+            )
+            if move_result:
+                outlook_actions.append(f"moved_to_{gtd_category}_folder")
+            
+            # Set COS extended properties
+            cos_props = {}
+            
+            # Link to project if identified
+            if email_analysis.get("project_id"):
+                cos_props["COS.ProjectId"] = email_analysis["project_id"]
+            
+            # Link to tasks if extracted
+            if email_analysis.get("extracted_tasks"):
+                task_ids = [str(task.get("id", "")) for task in email_analysis["extracted_tasks"]]
+                cos_props["COS.TaskIds"] = task_ids
+            
+            # Set confidence and processing metadata
+            cos_props.update({
+                "COS.Confidence": email_analysis.get("confidence", 0.8),
+                "COS.Provenance": "AI"
+            })
+            
+            if cos_props:
+                props_result = await self.extended_props.set_cos_properties(
+                    email.outlook_id, cos_props, user_id
+                )
+                if props_result:
+                    outlook_actions.append("set_cos_properties")
+            
+        except Exception as e:
+            logger.error(f"Outlook actions failed for email {email.id}: {e}")
+        
+        # Update local email record
+        email.summary = email_analysis.get("summary", "")
+        email.status = "triaged"
+        email.folder = gtd_category
+        
+        if email_analysis.get("project_id"):
+            email.project_id = email_analysis["project_id"]
+            email.linked_at = datetime.utcnow()
+        
+        import json
+        email.suggested_actions = json.dumps(email_analysis.get("suggestions", []))
+        
+        db.commit()
+        
+        return {
+            "email_id": email.id,
+            "analysis": email_analysis,
+            "gtd_category": gtd_category,
+            "outlook_actions": outlook_actions,
+            "success": True
+        }
+    
+    async def search_outlook_emails_by_project(self, project_id: str, 
+                                              user_id: str = "default") -> List[Dict]:
+        """Search for emails linked to a project in Outlook"""
+        try:
+            return await self.extended_props.search_by_project(project_id, user_id)
+        except Exception as e:
+            logger.error(f"Project email search failed: {e}")
+            return []
+    
+    async def search_outlook_emails_by_task(self, task_id: str, 
+                                           user_id: str = "default") -> List[Dict]:
+        """Search for emails linked to a task in Outlook"""
+        try:
+            return await self.extended_props.search_by_task(task_id, user_id)
+        except Exception as e:
+            logger.error(f"Task email search failed: {e}")
+            return []
+    
+    async def get_unprocessed_outlook_emails(self, user_id: str = "default") -> List[Dict]:
+        """Get emails that haven't been processed by COS"""
+        try:
+            return await self.extended_props.get_unprocessed_emails(user_id)
+        except Exception as e:
+            logger.error(f"Unprocessed emails search failed: {e}")
+            return []
+    
+    async def _analyze_email_with_ai(self, email: Email) -> Dict[str, Any]:
+        """Analyze email using AI to extract insights and suggestions"""
+        context = {
+            "email_subject": email.subject or "",
+            "email_content": email.body_content or email.body_preview or "",
+            "sender": email.sender or "",
+            "sender_name": email.sender_name or "",
+            "received_at": email.received_at.isoformat() if email.received_at else "",
+            "importance": email.importance or "normal",
+            "has_attachments": email.has_attachments or False
+        }
+        
+        # Generate comprehensive email analysis
+        response = await self.claude_client.generate_response(
+            "system/emailtriage", 
+            context=context, 
+            user_input="analyze_email"
+        )
+        
+        # Extract tasks from email content
+        tasks = await self.claude_client.extract_tasks_from_text(
+            email.body_content or email.body_preview or ""
+        )
+        
+        # Generate action suggestions
+        suggestions = await self.claude_client.generate_suggestions(context)
+        
+        return {
+            "summary": response,
+            "extracted_tasks": tasks,
+            "suggestions": suggestions,
+            "requires_action": "action" in response.lower(),
+            "waiting_for_response": "waiting" in response.lower(),
+            "is_meeting_related": any(word in (email.subject or "").lower() 
+                                    for word in ["meeting", "calendar", "schedule"]),
+            "is_reference": "reference" in response.lower(),
+            "contains_tasks": len(tasks) > 0,
+            "confidence": 0.8,  # Default confidence, could be enhanced with more AI analysis
+            "project_id": None  # Would be determined by project matching logic
         }
 
 class SummarizerAgent(BaseAgent):
