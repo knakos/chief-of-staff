@@ -4,16 +4,673 @@
   <meta charset="utf-8" />
   <title>Chief of Staff</title>
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
+        content="default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws://127.0.0.1:8787;">
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>body{font-family:system-ui,sans-serif;margin:2rem}.card{padding:1rem 1.25rem;border:1px solid #ddd;border-radius:8px}.muted{color:#666}</style>
+  
+  <!-- Load custom fonts -->
+  <link rel="stylesheet" href="assets/fonts/fonts.css">
+  
+  <!-- Load React and Babel for development -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <style id="app-styles">
+    /* Settings-based CSS - Generated from design/settings.json */
+    :root {
+      /* Colors */
+      --bg-primary: #f5f5f7;
+      --bg-secondary: #ffffff; 
+      --bg-tertiary: #e5e5e7;
+      --surface-base: #ffffff;
+      --surface-hover: #f0f0f2;
+      --surface-active: #e0e0e3;
+      --text-primary: #1d1d1f;
+      --text-secondary: #515154;
+      --text-muted: #86868b;
+      --text-disabled: #c7c7cc;
+      --border-base: #d2d2d7;
+      --border-hover: #a1a1a6;
+      --border-focus: #1d4ed8;
+      --brand-primary: #1e3a8a;
+      --brand-hover: #1d4ed8;
+      --brand-active: #1e40af;
+      --success: #059669;
+      --success-bg: rgba(5, 150, 105, 0.1);
+      --warning: #d97706;
+      --warning-bg: rgba(217, 119, 6, 0.1);
+      --error: #dc2626;
+      --error-bg: rgba(220, 38, 38, 0.1);
+      --info: #2563eb;
+      --info-bg: rgba(37, 99, 235, 0.1);
+      
+      /* Typography */
+      --font-family: 'Bell MT', 'Times New Roman', 'Times', serif;
+      --font-display: 'Hack', 'Monaco', 'Consolas', 'Courier New', monospace;
+      --font-mono: 'Hack', 'SF Mono', 'Monaco', 'Consolas', monospace;
+      --font-size-xs: 0.75rem;
+      --font-size-sm: 0.875rem;
+      --font-size-base: 1rem;
+      --font-size-lg: 1.125rem;
+      --font-size-xl: 1.25rem;
+      --font-size-2xl: 1.5rem;
+      --font-size-3xl: 1.875rem;
+      --font-weight-normal: 400;
+      --font-weight-medium: 500;
+      --font-weight-semibold: 600;
+      --font-weight-bold: 700;
+      --line-height-tight: 1.25;
+      --line-height-base: 1.5;
+      --line-height-relaxed: 1.625;
+      
+      /* Spacing */
+      --space-1: 0.25rem;
+      --space-2: 0.5rem;
+      --space-3: 0.75rem;
+      --space-4: 1rem;
+      --space-5: 1.25rem;
+      --space-6: 1.5rem;
+      --space-8: 2rem;
+      --space-10: 2.5rem;
+      --space-12: 3rem;
+      --space-16: 4rem;
+      --space-20: 5rem;
+      
+      /* Border Radius */
+      --radius-sm: 0.375rem;
+      --radius-base: 0.5rem;
+      --radius-md: 0.625rem;
+      --radius-lg: 0.75rem;
+      --radius-xl: 1rem;
+      --radius-2xl: 1.5rem;
+      --radius-full: 9999px;
+      
+      /* Shadows */
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --shadow-base: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+      --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+      
+      /* Transitions */
+      --duration-fast: 150ms;
+      --duration-base: 200ms;
+      --duration-slow: 300ms;
+      --duration-ease: cubic-bezier(0.4, 0, 0.2, 1);
+      
+      /* Layout */
+      --sidebar-width: 72px;
+      --chatbox-width: 400px;
+      --container-max: 1200px;
+    }
+    
+    /* Base Styles */
+    * { box-sizing: border-box; }
+    
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: var(--font-family);
+      font-size: var(--font-size-base);
+      line-height: var(--line-height-base);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-weight: var(--font-weight-normal);
+    }
+    
+    /* Layout */
+    .app-layout {
+      display: grid;
+      grid-template-columns: var(--sidebar-width) var(--chatbox-width) 1fr;
+      height: 100vh;
+      background: var(--bg-primary);
+    }
+
+    /* Left icon sidebar */
+    .icon-sidebar {
+      background: var(--surface-base);
+      border-right: 1px solid var(--border-base);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: var(--space-4) var(--space-2);
+      box-shadow: var(--shadow-base);
+    }
+
+    .icon-nav {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-3);
+    }
+
+    .icon-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 48px;
+      height: 48px;
+      border: none;
+      border-radius: var(--radius-lg);
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all var(--duration-fast) var(--duration-ease);
+      font-family: var(--font-display);
+    }
+
+    .icon-btn:hover {
+      background: var(--surface-hover);
+      color: var(--text-primary);
+    }
+
+    .icon-btn.active {
+      background: var(--brand-primary);
+      color: white;
+    }
+
+    /* Main content area */
+    .main-area {
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .main-content {
+      flex: 1;
+      padding: var(--space-8);
+      overflow-y: auto;
+    }
+
+    .placeholder-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      text-align: center;
+    }
+
+    /* Right chatbox panel */
+    .chatbox-panel {
+      background: var(--surface-base);
+      border-left: 1px solid var(--border-base);
+      box-shadow: var(--shadow-lg);
+    }
+
+    .chatbox {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .chatbox-header {
+      padding: var(--space-4);
+      border-bottom: 1px solid var(--border-base);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .connection-indicator {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .connection-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .connection-dot.connected { background: var(--success); }
+    .connection-dot.connecting { background: var(--warning); }
+    .connection-dot.disconnected { background: var(--error); }
+
+    .messages-area {
+      flex: 1;
+      padding: var(--space-4);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .welcome-message {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: var(--space-8) var(--space-4);
+    }
+
+    .welcome-icon {
+      font-size: 3rem;
+      margin-bottom: var(--space-4);
+    }
+
+    .quick-commands {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+      width: 100%;
+    }
+
+    .quick-cmd-btn {
+      padding: var(--space-2) var(--space-3);
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-base);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: all var(--duration-fast) var(--duration-ease);
+      font-family: var(--font-display);
+      font-size: var(--font-size-sm);
+      color: var(--brand-primary);
+    }
+
+    .quick-cmd-btn:hover {
+      background: var(--surface-hover);
+      border-color: var(--brand-primary);
+    }
+
+    .input-area {
+      padding: var(--space-4);
+      border-top: 1px solid var(--border-base);
+    }
+
+    .input-wrapper {
+      display: flex;
+      gap: var(--space-2);
+    }
+
+    .chat-input {
+      flex: 1;
+      padding: var(--space-3);
+      border: 1px solid var(--border-base);
+      border-radius: var(--radius-lg);
+      background: var(--bg-primary);
+      font-size: var(--font-size-sm);
+    }
+
+    .chat-input:focus {
+      outline: none;
+      border-color: var(--brand-primary);
+      box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.1);
+    }
+
+    .send-btn {
+      padding: var(--space-3);
+      background: var(--brand-primary);
+      color: white;
+      border: none;
+      border-radius: var(--radius-lg);
+      cursor: pointer;
+      transition: all var(--duration-fast) var(--duration-ease);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+    }
+
+    .send-btn:hover:not(:disabled) {
+      background: var(--brand-hover);
+    }
+
+    .send-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    /* Chat Message Bubbles */
+    .message {
+      margin-bottom: var(--space-4);
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .message.user {
+      align-items: flex-end;
+    }
+    
+    .message.agent {
+      align-items: flex-start;
+    }
+    
+    .message-content {
+      max-width: 80%;
+      padding: var(--space-3) var(--space-4);
+      border-radius: var(--radius-lg);
+      font-family: var(--font-family);
+      line-height: var(--line-height-base);
+      word-wrap: break-word;
+      white-space: pre-wrap;
+    }
+    
+    .message.user .message-content {
+      background: var(--brand-primary);
+      color: white;
+      border-bottom-right-radius: var(--radius-sm);
+    }
+    
+    .message.agent .message-content {
+      background: var(--surface-base);
+      color: var(--text-primary);
+      border: 1px solid var(--border-base);
+      border-bottom-left-radius: var(--radius-sm);
+      box-shadow: var(--shadow-sm);
+    }
+    
+    .message-time {
+      font-size: var(--font-size-xs);
+      color: var(--text-muted);
+      margin-top: var(--space-1);
+      font-family: var(--font-display);
+    }
+    
+    .message.user .message-time {
+      text-align: right;
+    }
+    
+    .message.agent .message-time {
+      text-align: left;
+    }
+    
+    /* Typing indicator */
+    .message.typing .message-content::after {
+      content: '|';
+      animation: blink 1s infinite;
+      margin-left: 2px;
+    }
+    
+    @keyframes blink {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0; }
+    }
+    
+    /* Thinking indicator */
+    .message.thinking-indicator {
+      align-items: flex-start;
+      margin-bottom: var(--space-2);
+    }
+    
+    .message.thinking-indicator .message-content {
+      background: transparent;
+      color: var(--text-muted);
+      border: none;
+      box-shadow: none;
+      font-style: italic;
+      font-size: var(--font-size-sm);
+      padding: var(--space-2) var(--space-3);
+      animation: fade-pulse 1.5s ease-in-out infinite alternate;
+    }
+    
+    @keyframes fade-pulse {
+      0% { opacity: 0.6; }
+      100% { opacity: 1; }
+    }
+    
+    /* Headings use display font */
+    h1, h2, h3, h4, h5, h6 {
+      font-family: var(--font-display);
+    }
+    
+    /* Utility classes */
+    .text-2xl { font-size: var(--font-size-2xl); }
+    .font-semibold { font-weight: var(--font-weight-semibold); }
+    .font-medium { font-weight: var(--font-weight-medium); }
+    .text-muted { color: var(--text-muted); }
+    .text-sm { color: var(--text-secondary); }
+    .mb-4 { margin-bottom: var(--space-4); }
+    .mb-2 { margin-bottom: var(--space-2); }
+  </style>
 </head>
 <body>
-  <h1>Chief of Staff</h1>
-  <div class="card">
-    <p>hello! your Electron app is running.</p>
-    <p class="muted">preload api version: <span id="ver"></span></p>
-  </div>
-  <script>document.getElementById('ver').textContent = (window.api&&window.api.version)||'n/a';</script>
+  <div id="root"></div>
+  
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+    
+    function App() {
+      const [activeSection, setActiveSection] = useState("main");
+      const [connectionStatus, setConnectionStatus] = useState('connecting');
+      const [messages, setMessages] = useState([]);
+      const [inputText, setInputText] = useState("");
+      const messagesEndRef = useRef(null);
+      const wsRef = useRef(null);
+
+      useEffect(() => {
+        const ws = new WebSocket("ws://127.0.0.1:8787/ws");
+        wsRef.current = ws;
+        
+        ws.onopen = () => setConnectionStatus('connected');
+        ws.onclose = () => setConnectionStatus('disconnected');
+        ws.onerror = () => setConnectionStatus('disconnected');
+        
+        ws.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data);
+            if (message.event === 'thread:append') {
+              const newMessage = message.data.message;
+              if (newMessage.role === 'agent') {
+                // Remove thinking indicator and add AI message
+                setMessages(prev => {
+                  // Filter out thinking indicators
+                  const withoutThinking = prev.filter(msg => !msg.isThinking);
+                  // Add AI message with timestamp
+                  const messageWithTimestamp = { 
+                    ...newMessage, 
+                    content: '', 
+                    isTyping: true,
+                    timestamp: new Date().toLocaleTimeString()
+                  };
+                  return [...withoutThinking, messageWithTimestamp];
+                });
+                
+                // Start typewriter effect
+                setTimeout(() => {
+                  startTypewriter(newMessage.content, newMessage.id);
+                }, 100);
+              } else {
+                setMessages(prev => [...prev, newMessage]);
+              }
+            }
+          } catch (e) {
+            console.error('Error parsing message:', e);
+          }
+        };
+        
+        return () => {
+          wsRef.current = null;
+          ws.close();
+        };
+      }, []);
+
+      useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, [messages]);
+
+      const startTypewriter = (fullText, messageId) => {
+        let currentIndex = 0;
+        const typeSpeed = 15; // milliseconds per character (faster)
+        
+        const typeInterval = setInterval(() => {
+          if (currentIndex <= fullText.length) {
+            const partialText = fullText.substring(0, currentIndex);
+            setMessages(prev => 
+              prev.map(msg => 
+                msg.id === messageId 
+                  ? { ...msg, content: partialText, isTyping: currentIndex < fullText.length }
+                  : msg
+              )
+            );
+            currentIndex++;
+          } else {
+            clearInterval(typeInterval);
+          }
+        }, typeSpeed);
+      };
+
+      const sendMessage = () => {
+        if (!inputText.trim() || connectionStatus !== 'connected' || !wsRef.current) return;
+        
+        const userMessage = {
+          id: Date.now(),
+          role: 'user',
+          content: inputText,
+          timestamp: new Date().toLocaleTimeString()
+        };
+        
+        // Add user message to UI immediately
+        setMessages(prev => [...prev, userMessage]);
+        
+        // Add thinking indicator
+        const thinkingMessage = {
+          id: 'thinking-' + Date.now(),
+          role: 'thinking-indicator',
+          content: 'Thinking...',
+          isThinking: true
+        };
+        setMessages(prev => [...prev, thinkingMessage]);
+        
+        // Send message to backend via WebSocket
+        const messageData = {
+          event: 'thread:send',
+          data: {
+            text: inputText,
+            timestamp: new Date().toISOString()
+          }
+        };
+        
+        wsRef.current.send(JSON.stringify(messageData));
+        setInputText("");
+      };
+
+      const handleKeyPress = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      };
+
+      return React.createElement('div', { className: 'app-layout' },
+        // Left icon panel
+        React.createElement('aside', { className: 'icon-sidebar' },
+          React.createElement('div', { className: 'icon-nav' },
+            React.createElement('button', {
+              className: `icon-btn ${activeSection === 'main' ? 'active' : ''}`,
+              onClick: () => setActiveSection('main'),
+              title: 'Main'
+            },
+              React.createElement('svg', { width: 24, height: 24, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2 },
+                React.createElement('path', { d: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' }),
+                React.createElement('polyline', { points: '9,22 9,12 15,12 15,22' })
+              )
+            ),
+            React.createElement('button', {
+              className: `icon-btn ${activeSection === 'emails' ? 'active' : ''}`,
+              onClick: () => setActiveSection('emails'),
+              title: 'Emails'
+            },
+              React.createElement('svg', { width: 24, height: 24, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2 },
+                React.createElement('path', { d: 'M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z' }),
+                React.createElement('polyline', { points: '22,6 12,13 2,6' })
+              )
+            )
+          )
+        ),
+        
+        // Chatbox panel (moved to center)
+        React.createElement('aside', { className: 'chatbox-panel' },
+          React.createElement('div', { className: 'chatbox' },
+            // Header
+            React.createElement('div', { className: 'chatbox-header' },
+              React.createElement('h3', { className: 'font-semibold' }, 'Chief of Staff'),
+              React.createElement('div', { className: 'connection-indicator' },
+                React.createElement('div', {
+                  className: `connection-dot ${connectionStatus}`,
+                  title: `Backend ${connectionStatus}`
+                }),
+                React.createElement('span', { className: 'text-sm text-muted' }, connectionStatus)
+              )
+            ),
+            
+            // Messages area
+            React.createElement('div', { className: 'messages-area' },
+              messages.length === 0 ? (
+                React.createElement('div', { className: 'welcome-message' },
+                  React.createElement('div', { className: 'welcome-icon' }, '🤖'),
+                  React.createElement('h4', { className: 'font-medium mb-2' }, 'Hello! I\'m your Chief of Staff'),
+                  React.createElement('p', { className: 'text-sm text-muted mb-4' }, 
+                    'I can help you plan, summarize, and organize your work. Try these commands:'
+                  ),
+                  React.createElement('div', { className: 'quick-commands' },
+                    ['/plan', '/summarize', '/triage'].map(cmd =>
+                      React.createElement('button', {
+                        key: cmd,
+                        className: 'quick-cmd-btn',
+                        onClick: () => setInputText(cmd)
+                      }, cmd)
+                    )
+                  )
+                )
+              ) : (
+                messages.map((msg, idx) =>
+                  React.createElement('div', { 
+                    key: idx, 
+                    className: `message ${msg.role} ${msg.isTyping ? 'typing' : ''}`
+                  },
+                    React.createElement('div', { className: 'message-content' }, msg.content),
+                    msg.timestamp && React.createElement('div', { className: 'message-time' }, msg.timestamp)
+                  )
+                )
+              ),
+              React.createElement('div', { ref: messagesEndRef })
+            ),
+            
+            // Input area
+            React.createElement('div', { className: 'input-area' },
+              React.createElement('div', { className: 'input-wrapper' },
+                React.createElement('input', {
+                  className: 'chat-input',
+                  placeholder: 'Ask your Chief of Staff...',
+                  value: inputText,
+                  onChange: (e) => setInputText(e.target.value),
+                  onKeyPress: handleKeyPress,
+                  disabled: connectionStatus !== 'connected'
+                }),
+                React.createElement('button', {
+                  className: 'send-btn',
+                  onClick: sendMessage,
+                  disabled: !inputText.trim() || connectionStatus !== 'connected'
+                },
+                  React.createElement('svg', { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2 },
+                    React.createElement('line', { x1: 22, y1: 2, x2: 11, y2: 13 }),
+                    React.createElement('polygon', { points: '22,2 15,22 11,13 2,9 22,2' })
+                  )
+                )
+              )
+            )
+          )
+        ),
+        
+        // Main content area (moved to right)
+        React.createElement('main', { className: 'main-area' },
+          React.createElement('div', { className: 'main-content' },
+            React.createElement('div', { className: 'placeholder-content' },
+              React.createElement('h2', { className: 'text-2xl font-semibold text-muted mb-4' },
+                activeSection === 'main' ? 'Main Dashboard' : 'Email Management'
+              ),
+              React.createElement('p', { className: 'text-muted' },
+                'This area is reserved for future content.'
+              )
+            )
+          )
+        )
+      );
+    }
+
+    // Render the app
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(App));
+  </script>
 </body>
 </html>

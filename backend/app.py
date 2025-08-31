@@ -189,18 +189,7 @@ class WSMessageHandler:
         if not text:
             return
 
-        # Echo user message
-        await manager.send_to_client(
-            self.websocket,
-            "thread:append",
-            {
-                "message": {
-                    "id": str(datetime.utcnow().timestamp()),
-                    "role": "user",
-                    "content": text
-                }
-            }
-        )
+        # Don't echo user message - frontend handles it immediately
 
         # Process with COS orchestrator
         response = await cos_orchestrator.process_user_input(text, self.db)
@@ -386,6 +375,31 @@ async def get_job_status(job_id: str, db: Session = Depends(get_db)):
         "status": job.status,
         "progress": job.progress,
         "error": job.error_message
+    }
+
+@app.get("/debug/prompts")
+async def debug_prompts():
+    """Debug endpoint to show loaded prompts and their timestamps"""
+    prompt_info = {}
+    for key, content in claude_client.prompts_cache.items():
+        # Extract timestamp from content
+        lines = content.split('\n')
+        if lines[0].startswith('<!-- Last saved:'):
+            timestamp = lines[0].replace('<!-- Last saved:', '').replace(' -->', '').strip()
+            preview = lines[1][:100] + "..." if len(lines) > 1 else ""
+        else:
+            timestamp = "Unknown"
+            preview = content[:100] + "..."
+        
+        prompt_info[key] = {
+            "last_saved": timestamp,
+            "preview": preview,
+            "size": len(content)
+        }
+    
+    return {
+        "total_prompts": len(prompt_info),
+        "prompts": prompt_info
     }
 
 @app.get("/health")

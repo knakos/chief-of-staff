@@ -12,7 +12,11 @@
       "Bash(pip install:*)",
       "Bash(./scripts/start_all.sh:*)",
       "Bash(npm install)",
-      "Bash(npm run dev:*)"
+      "Bash(npm run dev:*)",
+      "Bash(npm start)",
+      "Bash(netstat:*)",
+      "Bash(ss:*)",
+      "Bash(pkill:*)"
     ],
     "deny": [],
     "ask": []

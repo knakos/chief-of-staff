@@ -10,6 +10,8 @@ import asyncio
 import time
 from functools import lru_cache
 import hashlib
+from datetime import datetime
+from anthropic import AsyncAnthropic
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +27,12 @@ class ClaudeClient:
         self.response_cache: Dict[str, Dict[str, Any]] = {}
         self.cache_ttl = 300  # 5 minutes cache TTL
         
+        # Initialize Anthropic client
+        self.client = AsyncAnthropic(api_key=self.api_key) if self.api_key else None
+        
         # Load all prompts on initialization
         self._load_all_prompts()
+        logger.info(f"Loaded {len(self.prompts_cache)} prompts")
     
     def _load_all_prompts(self):
         """Load all prompt files into memory"""
@@ -42,18 +48,30 @@ class ClaudeClient:
             prompt_key = str(relative_path).replace(".md", "")
             
             try:
+                # Get file modification time
+                mod_time = prompt_file.stat().st_mtime
+                mod_datetime = datetime.fromtimestamp(mod_time)
+                
                 with open(prompt_file, 'r', encoding='utf-8') as f:
                     content = f.read().strip()
-                    self.prompts_cache[prompt_key] = content
+                    # Add timestamp header to content
+                    timestamp_str = mod_datetime.strftime('%Y-%m-%d %H:%M:%S')
+                    timestamped_content = f"<!-- Last saved: {timestamp_str} -->\n{content}"
+                    self.prompts_cache[prompt_key] = timestamped_content
+                    
+                    logger.info(f"Loaded prompt '{prompt_key}' (saved: {timestamp_str})")
                     
             except Exception as e:
                 logger.error(f"Failed to load prompt {prompt_file}: {e}")
         
         logger.info(f"Loaded {len(self.prompts_cache)} prompts")
     
-    @lru_cache(maxsize=128)
+    # @lru_cache(maxsize=128)  # Temporarily disabled for debugging
     def get_prompt(self, prompt_key: str) -> str:
         """Get a prompt by key (e.g., 'system/cos' or 'tools/digest')"""
+        # Force reload prompts to pick up changes during debugging
+        self._load_all_prompts()
+        
         if prompt_key not in self.prompts_cache:
             raise ValueError(f"Prompt not found: {prompt_key}. Available prompts: {list(self.prompts_cache.keys())}")
         
@@ -65,17 +83,23 @@ class ClaudeClient:
             # Create cache key from inputs
             cache_key = self._create_cache_key(prompt_key, context, user_input)
             
-            # Check cache first
-            cached_response = self._get_cached_response(cache_key)
-            if cached_response:
-                logger.info(f"Cache hit for prompt {prompt_key}")
-                return cached_response
+            # Check cache first (temporarily disabled for debugging)
+            # cached_response = self._get_cached_response(cache_key)
+            # if cached_response:
+            #     logger.info(f"Cache hit for prompt {prompt_key}")
+            #     return cached_response
             
             system_prompt = self.get_prompt(prompt_key)
+            logger.info(f"Using prompt for {prompt_key}: {system_prompt[:100]}...")
             
-            # For now, return a mock response since we don't have Claude API integration yet
-            # This allows the rest of the system to work while we build it out
-            response = await self._mock_claude_response(prompt_key, context, user_input)
+            # Use real Claude API if key available, otherwise fallback to mock
+            if self.api_key and not os.getenv("USE_MOCK_RESPONSES", "").lower() == "true":
+                logger.info(f"Calling Claude API with user input: {user_input}")
+                response = await self._call_claude_api(system_prompt, context, user_input)
+                logger.info(f"Claude API response: {response[:100]}...")
+            else:
+                logger.warning("Using mock response - no API key or USE_MOCK_RESPONSES=true")
+                response = await self._mock_claude_response(prompt_key, context, user_input)
             
             # Cache the response
             self._cache_response(cache_key, response)
@@ -118,6 +142,47 @@ class ClaudeClient:
             sorted_items = sorted(self.response_cache.items(), key=lambda x: x[1]['timestamp'])
             for key, _ in sorted_items[:100]:
                 del self.response_cache[key]
+    
+    async def _call_claude_api(self, system_prompt: str, context: Dict[str, Any], user_input: str) -> str:
+        """Make actual API call to Claude"""
+        if not self.client:
+            raise Exception("Claude client not initialized - missing API key")
+        
+        try:
+            # Build the user message with context
+            user_message = user_input
+            if context:
+                context_str = self._format_context_for_prompt(context)
+                user_message = f"Context: {context_str}\n\nUser input: {user_input}"
+            
+            # Call Claude API
+            response = await self.client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=4000,
+                temperature=0.7,
+                system=system_prompt,
+                messages=[
+                    {"role": "user", "content": user_message}
+                ]
+            )
+            
+            return response.content[0].text
+            
+        except Exception as e:
+            logger.error(f"Claude API call failed: {e}")
+            raise Exception(f"Claude API call failed: {str(e)}")
+    
+    def _format_context_for_prompt(self, context: Dict[str, Any]) -> str:
+        """Format context dictionary for inclusion in prompt"""
+        if not context:
+            return ""
+        
+        formatted_parts = []
+        for key, value in context.items():
+            if value is not None:
+                formatted_parts.append(f"{key}: {value}")
+        
+        return "\n".join(formatted_parts)
     
     async def _mock_claude_response(self, prompt_key: str, context: Dict[str, Any], user_input: str) -> str:
         """Mock Claude responses for development with reduced delay"""
