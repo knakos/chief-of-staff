@@ -1,25 +1,15 @@
 import React, { useEffect, useState } from "react";
 import { connectWS, isConnected } from "./lib/ws";
 import EmailThreadView from "./components/EmailThreadView";
-import EmailManagement from "./components/EmailManagement";
 import ChatInbox from "./components/ChatInbox";
-import ProfileSetup from "./components/ProfileSetup";
-import ContactManager from "./components/ContactManager";
-import { ProjectDashboard } from "./components/projects";
 import { Card } from "./components/ui";
-import ErrorBoundary from "./components/ErrorBoundary";
 
 export default function App() {
   const [route, setRoute] = useState("inbox");
-  
-  // Debug route changes
-  useEffect(() => {
-    console.log('App: Route changed to:', route);
-  }, [route]);
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
 
   useEffect(() => {
-    connectWS("ws://127.0.0.1:8787/ws");
+    connectWS("ws://127.0.0.1:8788/ws");
     
     // Check connection status periodically
     const checkConnection = () => {
@@ -27,7 +17,7 @@ export default function App() {
     };
     
     checkConnection();
-    const interval = setInterval(checkConnection, 30 * 60 * 1000); // Check every 30 minutes
+    const interval = setInterval(checkConnection, 1000);
     
     return () => clearInterval(interval);
   }, []);
@@ -76,7 +66,6 @@ export default function App() {
               </h3>
               <div className="nav-items col gap-2">
                 <button 
-                  key="inbox"
                   className={`nav-item ${route === "inbox" ? "active" : ""}`}
                   onClick={() => setRoute("inbox")}
                 >
@@ -87,54 +76,6 @@ export default function App() {
                   Inbox
                 </button>
                 <button 
-                  key="projects"
-                  className={`nav-item ${route === "projects" ? "active" : ""}`}
-                  onClick={() => setRoute("projects")}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M9 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-4"/>
-                    <polyline points="9,11 12,14 15,11"/>
-                    <line x1="12" y1="14" x2="12" y2="3"/>
-                  </svg>
-                  Projects
-                </button>
-                <button 
-                  key="smart-emails"
-                  className={`nav-item ${route === "emails" ? "active" : ""}`}
-                  onClick={() => setRoute("emails")}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                    <polyline points="22,6 12,13 2,6"/>
-                  </svg>
-                  Smart Emails
-                </button>
-                <button 
-                  key="profile"
-                  className={`nav-item ${route === "profile" ? "active" : ""}`}
-                  onClick={() => setRoute("profile")}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                    <circle cx="12" cy="7" r="4"/>
-                  </svg>
-                  Profile
-                </button>
-                <button 
-                  key="contacts"
-                  className={`nav-item ${route === "contacts" ? "active" : ""}`}
-                  onClick={() => setRoute("contacts")}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                    <circle cx="9" cy="7" r="4"/>
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                  </svg>
-                  Network
-                </button>
-                <button 
-                  key="legacy-emails"
                   className={`nav-item ${route === "email" ? "active" : ""}`}
                   onClick={() => setRoute("email")}
                 >
@@ -145,7 +86,7 @@ export default function App() {
                     <line x1="16" y1="17" x2="8" y2="17"/>
                     <polyline points="10,9 9,9 8,9"/>
                   </svg>
-                  Legacy Emails
+                  Email Threads
                 </button>
               </div>
             </div>
@@ -155,7 +96,7 @@ export default function App() {
                 Quick Actions
               </h3>
               <div className="nav-items col gap-2">
-                <button key="triage" className="nav-item ghost">
+                <button className="nav-item ghost">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M9 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-4"/>
                     <polyline points="9,11 12,14 15,11"/>
@@ -163,14 +104,14 @@ export default function App() {
                   </svg>
                   Triage Inbox
                 </button>
-                <button key="digest" className="nav-item ghost">
+                <button className="nav-item ghost">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <circle cx="12" cy="12" r="10"/>
                     <polyline points="12,6 12,12 16,14"/>
                   </svg>
                   Daily Digest
                 </button>
-                <button key="interview" className="nav-item ghost">
+                <button className="nav-item ghost">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M9 19c-5 0-8-3-8-6 0-3 3-6 8-6 2.4 0 4.5.85 6 2.25A6.97 6.97 0 0 1 21 13c0 3-3 6-8 6z"/>
                     <path d="M12 19c5 0 8-3 8-6 0-1.17-.29-2.27-.78-3.25A6.97 6.97 0 0 0 15 11c-3 0-6 1.34-6 4 0 3 3 6 8 6z"/>
@@ -185,48 +126,8 @@ export default function App() {
 
       {/* Main Content */}
       <main className="main-content">
-        <div className="content-wrapper">
-          {route === "inbox" && (
-            <div className="route-content">
-              <ChatInbox />
-            </div>
-          )}
-          {route === "projects" && (
-            <div className="route-content">
-              <ProjectDashboard />
-            </div>
-          )}
-          {route === "emails" && (
-            <div className="route-content full-height">
-              <ErrorBoundary>
-                <EmailManagement />
-              </ErrorBoundary>
-            </div>
-          )}
-          {route === "profile" && (
-            <div className="route-content">
-              <ProfileSetup 
-                onComplete={(profile) => {
-                  console.log('Profile setup completed:', profile);
-                  setRoute("inbox");
-                }}
-              />
-            </div>
-          )}
-          {route === "contacts" && (
-            <div className="route-content">
-              <ContactManager 
-                onContactUpdate={(contact) => {
-                  console.log('Contact updated:', contact);
-                }}
-              />
-            </div>
-          )}
-          {route === "email" && (
-            <div className="route-content">
-              <EmailThreadView />
-            </div>
-          )}
+        <div className="content-wrapper p-6">
+          {route === "inbox" ? <ChatInbox /> : <EmailThreadView />}
         </div>
       </main>
 
@@ -252,17 +153,8 @@ export default function App() {
         }
 
         .content-wrapper {
-          height: 100%;
-          width: 100%;
-        }
-
-        .route-content {
-          height: 100%;
-          padding: var(--space-6);
-        }
-
-        .route-content.full-height {
-          padding: 0;
+          max-width: var(--container-max);
+          margin: 0 auto;
         }
 
         .logo .w-8 {

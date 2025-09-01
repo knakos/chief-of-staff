@@ -10,7 +10,7 @@ from pathlib import Path
 # Add parent directory to path to import modules
 sys.path.append(str(Path(__file__).parent))
 
-from models import Base, Project, Task
+from models import Base, Project, Task, Email
 from claude_client import ClaudeClient
 from job_queue import JobQueue
 from agents import COSOrchestrator

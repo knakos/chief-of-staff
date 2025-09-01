@@ -7,16 +7,15 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 
-from models import Project, Task, ContextEntry, Interview, Digest
+from models import Project, Task, Email, ContextEntry, Interview, Digest
 from claude_client import ClaudeClient
 from job_queue import JobQueue
 from integrations.outlook.connector import GraphAPIConnector
 from integrations.outlook.auth import OutlookAuthManager
-# EmailSyncService removed - no longer needed without database email storage
+from integrations.outlook.sync_service import EmailSyncService
 from integrations.outlook.folder_manager import GTDFolderManager
 from integrations.outlook.extended_props import COSExtendedPropsManager
 from integrations.outlook.hybrid_service import HybridOutlookService
-from email_intelligence import EmailIntelligenceService
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +41,6 @@ class COSOrchestrator(BaseAgent):
         self.email_triage = EmailTriageAgent(claude_client)
         self.summarizer = SummarizerAgent(claude_client)
         self.writer = WriterAgent(claude_client)
-        self.email_intelligence = EmailIntelligenceService(claude_client)
     
     async def process_user_input(self, user_input: str, db: Session) -> str:
         """Process user input and coordinate appropriate responses"""
@@ -105,30 +103,10 @@ class COSOrchestrator(BaseAgent):
                 connect_result = await self.email_triage.hybrid_service.connect()
                 context["outlook_connection"] = connect_result
                 intent_actions.append(f"outlook_connect_attempted")
-            elif any(word in user_lower for word in ["recent", "latest", "new", "subjects", "five most recent"]):
-                # User is asking about recent emails - fetch directly from Outlook
-                try:
-                    logger.info("Fetching live recent emails from Outlook for user request")
-                    live_emails = await self.email_triage.hybrid_service.get_messages("Inbox", limit=5)
-                    if live_emails:
-                        context["live_recent_emails"] = []
-                        for i, email in enumerate(live_emails, 1):
-                            context["live_recent_emails"].append({
-                                "number": i,
-                                "subject": email.get("subject", "No Subject"),
-                                "sender": email.get("sender_name", email.get("sender", "Unknown")),
-                                "date": email.get("received_at", email.get("received_date_time", "Unknown"))
-                            })
-                        intent_actions.append("live_emails_fetched")
-                        logger.info(f"Fetched {len(live_emails)} live emails from Outlook")
-                    else:
-                        context["live_recent_emails_error"] = "No emails found in Outlook"
-                        logger.warning("No live emails found in Outlook")
-                except Exception as e:
-                    context["live_recent_emails_error"] = str(e)
-                    logger.error(f"Failed to fetch live emails: {e}")
-                    # Direct fetch failed, provide fallback info
-                    context["outlook_fetch_error"] = str(e)
+            elif any(word in user_lower for word in ["sync", "get", "download", "fetch"]):
+                sync_result = await self.email_triage.hybrid_service.sync_emails(db)
+                context["outlook_sync"] = sync_result
+                intent_actions.append(f"outlook_sync_attempted")
             elif any(word in user_lower for word in ["organize", "triage", "sort", "process"]):
                 # Trigger email triage in background
                 await self.job_queue.add_job("email_scan", {})
@@ -173,8 +151,7 @@ class COSOrchestrator(BaseAgent):
         # Get active projects and tasks
         active_projects = db.query(Project).filter(Project.status == "active").all()
         pending_tasks = db.query(Task).filter(Task.status.in_(["pending", "in_progress"])).all()
-        # Email counts now handled directly via Outlook integration
-        unprocessed_emails = 0  # Placeholder - would need Outlook query
+        unprocessed_emails = db.query(Email).filter(Email.status == "unprocessed").count()
         
         context.update({
             "active_projects_count": len(active_projects),
@@ -198,8 +175,7 @@ class COSOrchestrator(BaseAgent):
         await self.job_queue.add_job("email_scan", {})
         
         # Get local unprocessed emails
-        # Local unprocessed emails no longer stored in database
-        local_unprocessed = []  # Placeholder - emails are now accessed directly from Outlook
+        local_unprocessed = db.query(Email).filter(Email.status == "unprocessed").all()
         
         # Get Outlook unprocessed emails if authenticated
         outlook_unprocessed = []
@@ -225,12 +201,21 @@ class COSOrchestrator(BaseAgent):
         # Process some Outlook emails
         for outlook_email in outlook_unprocessed[:3]:  # Process first 3 Outlook emails
             # Check if email already exists locally
-            # Email database queries removed - emails accessed directly from Outlook
-            existing = None  # Placeholder - no longer stored in database
+            existing = db.query(Email).filter(Email.outlook_id == outlook_email["id"]).first()
             if not existing:
-                # Email creation removed - emails accessed directly from Outlook
-                logger.info(f"Processing Outlook email: {outlook_email.get('subject', 'No subject')}")
-                # Email processing now handled by direct Outlook integration
+                # Create local email record
+                local_email = Email(
+                    outlook_id=outlook_email["id"],
+                    subject=outlook_email.get("subject", ""),
+                    sender=outlook_email.get("from", {}).get("emailAddress", {}).get("address", ""),
+                    body_preview=outlook_email.get("bodyPreview", ""),
+                    received_at=datetime.utcnow()
+                )
+                db.add(local_email)
+                db.commit()
+                
+                # Triage with Outlook integration
+                await self.email_triage.triage_outlook_email(local_email, db)
                 processed_count += 1
         
         context = {
@@ -292,7 +277,17 @@ class COSOrchestrator(BaseAgent):
                 logger.error(f"Hybrid connection failed: {e}")
                 return f"Connection failed: {str(e)}"
         
-        # /outlook sync removed - emails are accessed directly from Outlook, not synced to database
+        elif "/outlook sync" in command:
+            # Sync emails from Outlook using hybrid service
+            try:
+                result = await self.email_triage.hybrid_service.sync_emails(db)
+                if result["success"]:
+                    return f"Outlook sync completed: {result['synced_count']} emails processed via {result['method']}"
+                else:
+                    return f"Outlook sync failed: {result.get('error', 'Unknown error')}"
+            except Exception as e:
+                logger.error(f"Outlook sync error: {e}")
+                return f"Outlook sync failed: {str(e)}"
         
         elif "/outlook setup" in command:
             # Setup GTD folders using hybrid service
@@ -400,7 +395,7 @@ class COSOrchestrator(BaseAgent):
                 return f"Error checking Outlook status: {str(e)}"
         
         else:
-            return "Available Outlook commands: /outlook connect, /outlook setup, /outlook triage, /outlook status, /outlook info, /outlook test, /outlook disconnect"
+            return "Available Outlook commands: /outlook connect, /outlook sync, /outlook setup, /outlook triage, /outlook status, /outlook info, /outlook test, /outlook disconnect"
     
     async def _build_current_context(self, db: Session) -> Dict[str, Any]:
         """Build current context for AI interactions"""
@@ -409,8 +404,9 @@ class COSOrchestrator(BaseAgent):
         recent_tasks = db.query(Task).filter(
             Task.created_at >= datetime.utcnow() - timedelta(days=7)
         ).all()
-        # Recent email queries now handled by direct Outlook integration
-        recent_emails = []  # Placeholder - emails accessed directly from Outlook
+        recent_emails = db.query(Email).filter(
+            Email.received_at >= datetime.utcnow() - timedelta(days=3)
+        ).all()
         
         context = {
             "current_time": datetime.utcnow().isoformat(),
@@ -421,14 +417,47 @@ class COSOrchestrator(BaseAgent):
         
         return context
     
-    async def apply_email_action(self, email_id: str, action: str, payload: Dict[str, Any], db: Session) -> Dict[str, Any]:
-        """
-        Apply an action to an email
-        DEPRECATED: Email actions are now handled directly in app.py via handle_email_action
-        This method is kept for backward compatibility but should not be used.
-        """
-        logger.warning("apply_email_action is deprecated - use handle_email_action in app.py instead")
-        return {"success": False, "message": "Method deprecated - use direct email action handling"}
+    async def apply_email_action(self, email: Email, action: str, payload: Dict[str, Any], db: Session) -> Dict[str, Any]:
+        """Apply an action to an email"""
+        logger.info(f"Applying action '{action}' to email {email.id}")
+        
+        result = {"success": False, "message": "Unknown action"}
+        
+        if action == "move_to_folder":
+            folder = payload.get("folder", "COS_Actions")
+            email.folder = folder
+            email.status = "triaged"
+            result = {"success": True, "message": f"Email moved to {folder}"}
+        
+        elif action == "add_to_project":
+            project_id = payload.get("project_id")
+            if project_id:
+                email.project_id = project_id
+                email.linked_at = datetime.utcnow()
+                result = {"success": True, "message": f"Email linked to project"}
+        
+        elif action == "extract_tasks":
+            # Extract tasks from email content
+            tasks = await self.claude_client.extract_tasks_from_text(email.body_content or email.body_preview)
+            
+            created_tasks = []
+            for task_data in tasks:
+                task = Task(
+                    title=task_data["title"],
+                    project_id=email.project_id,
+                    description=f"Extracted from email: {email.subject}"
+                )
+                db.add(task)
+                created_tasks.append(task_data["title"])
+            
+            result = {"success": True, "message": f"Created {len(created_tasks)} tasks", "tasks": created_tasks}
+        
+        elif action == "schedule_follow_up":
+            # This would integrate with calendar system
+            result = {"success": True, "message": "Follow-up scheduled (calendar integration pending)"}
+        
+        db.commit()
+        return result
     
     async def process_interview_answer(self, interview: Interview, db: Session):
         """Process an interview answer and update context"""
@@ -472,26 +501,53 @@ class EmailTriageAgent(BaseAgent):
         # Legacy services (still available for direct Graph API access)
         self.graph_connector = GraphAPIConnector()
         self.auth_manager = OutlookAuthManager()
-        # sync_service removed - no longer needed without database email storage
+        self.sync_service = EmailSyncService(self.graph_connector, self.auth_manager)
         self.folder_manager = GTDFolderManager(self.graph_connector, self.auth_manager)
         self.extended_props = COSExtendedPropsManager(self.graph_connector, self.auth_manager)
     
-    async def process_email(self, email_data: dict, db: Session) -> Dict[str, Any]:
-        """
-        Process a single email - triage, categorize, extract info
-        DEPRECATED: Email processing now handled by HybridOutlookService and app.py handlers
-        """
-        logger.warning("process_email is deprecated - use HybridOutlookService directly")
-        return {"success": False, "message": "Method deprecated - use direct Outlook integration"}
+    async def process_email(self, email: Email, db: Session) -> Dict[str, Any]:
+        """Process a single email - triage, categorize, extract info"""
+        logger.info(f"Processing email: {email.subject}")
+        
+        # Generate email analysis using AI
+        email_analysis = await self._analyze_email_with_ai(email)
+        
+        # Update email with AI-generated content
+        email.summary = email_analysis.get("summary", "")
+        email.status = "triaged"
+        
+        # Store suggested actions
+        import json
+        email.suggested_actions = json.dumps(email_analysis.get("suggestions", []))
+        
+        db.commit()
+        
+        return {
+            "email_id": email.id,
+            "analysis": email_analysis,
+            "outlook_integration_ready": hasattr(email, 'outlook_id') and email.outlook_id is not None
+        }
     
     async def sync_outlook_emails(self, db: Session, user_id: str = "default", 
                                  initial_sync: bool = False) -> Dict[str, Any]:
-        """
-        Sync emails from Outlook 
-        DEPRECATED: Email sync now handled by HybridOutlookService directly
-        """
-        logger.warning("sync_outlook_emails is deprecated - use HybridOutlookService.get_messages() instead")
-        return {"success": False, "message": "Method deprecated - use direct Outlook integration"}
+        """Sync emails from Outlook"""
+        try:
+            if initial_sync:
+                synced_emails = await self.sync_service.initial_sync(db, user_id)
+            else:
+                synced_emails = await self.sync_service.delta_sync(db, user_id)
+            
+            return {
+                "success": True,
+                "synced_count": len(synced_emails),
+                "emails": synced_emails
+            }
+        except Exception as e:
+            logger.error(f"Outlook sync failed: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
     
     async def setup_outlook_folders(self, user_id: str = "default") -> Dict[str, Any]:
         """Setup GTD folder structure in Outlook"""
@@ -508,14 +564,78 @@ class EmailTriageAgent(BaseAgent):
                 "error": str(e)
             }
     
-    async def triage_outlook_email(self, email_id: str, db: Session, 
+    async def triage_outlook_email(self, email: Email, db: Session, 
                                   user_id: str = "default") -> Dict[str, Any]:
-        """
-        Triage an email with Outlook-specific actions
-        DEPRECATED: Email triage now handled by HybridOutlookService with property sync
-        """
-        logger.warning("triage_outlook_email is deprecated - use handle_email_analyze in app.py instead")
-        return {"success": False, "message": "Method deprecated - use direct Outlook integration with property sync"}
+        """Triage an email with Outlook-specific actions"""
+        if not hasattr(email, 'outlook_id') or not email.outlook_id:
+            return await self.process_email(email, db)
+        
+        # Analyze email with AI
+        email_analysis = await self._analyze_email_with_ai(email)
+        
+        # Get GTD recommendation
+        gtd_category = self.folder_manager.get_gtd_recommendation(email_analysis)
+        
+        # Apply Outlook actions based on analysis
+        outlook_actions = []
+        
+        try:
+            # Move to appropriate GTD folder
+            move_result = await self.folder_manager.move_email_to_gtd_folder(
+                email.outlook_id, gtd_category, user_id
+            )
+            if move_result:
+                outlook_actions.append(f"moved_to_{gtd_category}_folder")
+            
+            # Set COS extended properties
+            cos_props = {}
+            
+            # Link to project if identified
+            if email_analysis.get("project_id"):
+                cos_props["COS.ProjectId"] = email_analysis["project_id"]
+            
+            # Link to tasks if extracted
+            if email_analysis.get("extracted_tasks"):
+                task_ids = [str(task.get("id", "")) for task in email_analysis["extracted_tasks"]]
+                cos_props["COS.TaskIds"] = task_ids
+            
+            # Set confidence and processing metadata
+            cos_props.update({
+                "COS.Confidence": email_analysis.get("confidence", 0.8),
+                "COS.Provenance": "AI"
+            })
+            
+            if cos_props:
+                props_result = await self.extended_props.set_cos_properties(
+                    email.outlook_id, cos_props, user_id
+                )
+                if props_result:
+                    outlook_actions.append("set_cos_properties")
+            
+        except Exception as e:
+            logger.error(f"Outlook actions failed for email {email.id}: {e}")
+        
+        # Update local email record
+        email.summary = email_analysis.get("summary", "")
+        email.status = "triaged"
+        email.folder = gtd_category
+        
+        if email_analysis.get("project_id"):
+            email.project_id = email_analysis["project_id"]
+            email.linked_at = datetime.utcnow()
+        
+        import json
+        email.suggested_actions = json.dumps(email_analysis.get("suggestions", []))
+        
+        db.commit()
+        
+        return {
+            "email_id": email.id,
+            "analysis": email_analysis,
+            "gtd_category": gtd_category,
+            "outlook_actions": outlook_actions,
+            "success": True
+        }
     
     async def search_outlook_emails_by_project(self, project_id: str, 
                                               user_id: str = "default") -> List[Dict]:
@@ -567,9 +687,32 @@ class EmailTriageAgent(BaseAgent):
                     "count": 0
                 }
             
-            # Email sync to database removed - emails accessed directly from Outlook
-            synced_count = len(messages) if messages else 0
-            logger.info(f"Retrieved {synced_count} emails directly from Outlook (no database storage)")
+            # Sync retrieved messages to database if not already present
+            synced_count = 0
+            for msg_data in messages:
+                existing = db.query(Email).filter(
+                    Email.outlook_id == msg_data.get("id")
+                ).first()
+                
+                if not existing and msg_data.get("id"):
+                    new_email = Email(
+                        outlook_id=msg_data["id"],
+                        subject=msg_data.get("subject", ""),
+                        sender=msg_data.get("sender", ""),
+                        sender_name=msg_data.get("sender_name", ""),
+                        body_content=msg_data.get("body_content", ""),
+                        body_preview=msg_data.get("body_preview", ""),
+                        received_at=msg_data.get("received_at"),
+                        sent_at=msg_data.get("sent_at"),
+                        is_read=msg_data.get("is_read", False),
+                        importance=msg_data.get("importance", "normal"),
+                        has_attachments=msg_data.get("has_attachments", False)
+                    )
+                    db.add(new_email)
+                    synced_count += 1
+            
+            if synced_count > 0:
+                db.commit()
             
             return {
                 "success": True,
@@ -587,16 +730,16 @@ class EmailTriageAgent(BaseAgent):
                 "message": "Failed to retrieve inbox messages"
             }
     
-    async def _analyze_email_with_ai(self, email_data: dict) -> Dict[str, Any]:
+    async def _analyze_email_with_ai(self, email: Email) -> Dict[str, Any]:
         """Analyze email using AI to extract insights and suggestions"""
         context = {
-            "email_subject": email_data.get("subject", ""),
-            "email_content": email_data.get("body_content", "") or email_data.get("body_preview", ""),
-            "sender": email_data.get("sender", ""),
-            "sender_name": email_data.get("sender_name", ""),
-            "received_at": email_data.get("received_at", ""),
-            "importance": email_data.get("importance", "normal"),
-            "has_attachments": email_data.get("has_attachments", False)
+            "email_subject": email.subject or "",
+            "email_content": email.body_content or email.body_preview or "",
+            "sender": email.sender or "",
+            "sender_name": email.sender_name or "",
+            "received_at": email.received_at.isoformat() if email.received_at else "",
+            "importance": email.importance or "normal",
+            "has_attachments": email.has_attachments or False
         }
         
         # Generate comprehensive email analysis
@@ -608,7 +751,7 @@ class EmailTriageAgent(BaseAgent):
         
         # Extract tasks from email content
         tasks = await self.claude_client.extract_tasks_from_text(
-            email_data.get("body_content", "") or email_data.get("body_preview", "")
+            email.body_content or email.body_preview or ""
         )
         
         # Generate action suggestions

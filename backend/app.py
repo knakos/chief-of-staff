@@ -17,7 +17,7 @@ from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import StaticPool
 from pydantic import BaseModel
 
-from models import Base, Area, Project, Task, ContextEntry, Job, Interview, Digest
+from models import Base, Project, Task, ContextEntry, Job, Interview, Digest
 from job_queue import JobQueue
 from claude_client import ClaudeClient
 from agents import COSOrchestrator

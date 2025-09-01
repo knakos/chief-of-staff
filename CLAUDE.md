@@ -22,10 +22,7 @@ python init_db.py
 
 # Start backend server (from project root)
 ./scripts/start_all.sh  # Linux/WSL
-# Windows: 
-cd backend
-.venv\Scripts\activate
-.venv\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8787 --reload
+# Windows: cd backend && .venv\Scripts\activate && uvicorn app:app --host 127.0.0.1 --port 8787 --reload
 
 # Database optimization (run periodically)
 python optimize_db.py
@@ -204,25 +201,6 @@ Three-tier system with real-time WebSocket communication, optimized performance,
 - `/outlook setup` - Create GTD folder structure in Outlook
 - `/outlook triage` - AI-process unprocessed emails into appropriate folders
 
-### Rate Limiting & API Management
-The system implements intelligent rate limiting to prevent Anthropic API 429 errors:
-
-- **Idle-Based Connection Checking**: AI connection status is only checked after 30 minutes of user inactivity
-- **Request Spacing**: Minimum 1-second interval between all Claude API calls
-- **Activity Tracking**: User messages automatically reset the idle timer
-- **Thread-Safe**: Uses locks to prevent race conditions in concurrent environments
-- **Transparent Operation**: Rate limiting happens automatically without user intervention
-
-**Key Implementation Details:**
-```python
-# ClaudeClient automatically tracks activity and applies rate limiting
-claude_client.update_activity()  # Called on user input
-claude_client.should_check_connection()  # Returns True only after 30min idle
-await claude_client._apply_rate_limiting()  # Enforces 1s minimum between calls
-```
-
-This architecture ensures the system is responsive during active use while preventing API quota exhaustion.
-
 ### Core System Features  
 - **Context Interviews**: Strategic questioning system with `interview:start/answer/dismiss` events
 - **Background Processing**: Continuous context scanning, digest building, and link suggestion
@@ -258,7 +236,6 @@ This architecture ensures the system is responsive during active use while preve
 - **WebSocket**: Concurrent broadcasting with proper error handling and auto-reconnection
 - **Frontend**: React optimization patterns (memo, callbacks, useMemo) prevent unnecessary re-renders
 - **Caching**: AI response caching (5min TTL) + LRU prompt caching reduces redundant API calls
-- **Rate Limiting**: Prevents API 429 errors with intelligent idle detection and request spacing
 - **Async Processing**: Background jobs run without blocking main application thread
 - **Error Handling**: Graceful degradation with visual feedback for all error states
 
@@ -271,13 +248,11 @@ This architecture ensures the system is responsive during active use while preve
 - **Component Consistency**: Reusable component library ensures consistent behavior and styling
 
 ### Script Permissions & Common Issues
-- **Windows Environment**: Use `.venv\Scripts\python.exe` for all Python commands
-- **Unicode Errors**: Windows console may fail with Unicode characters in test_setup.py - ignore cosmetic errors
-- **Backend must be started before frontend** for WebSocket connection
-- **Missing `.env` file** will cause backend startup failure
-- **Database optimization** should be run periodically for best performance
-- **Rate Limit Errors**: System now prevents 429 errors with 30-minute idle timeout and 1-second API spacing
-- **COM Requirements**: Windows Outlook must be running with target account logged in for COM integration
+- Scripts may need executable permissions: `chmod +x ./scripts/start_all.sh`
+- PowerShell scripts (.ps1) won't run in bash - use manual commands instead
+- Backend must be started before frontend for WebSocket connection
+- Missing `.env` file will cause backend startup failure
+- Database optimization should be run periodically for best performance
 
 ## Key Implementation Priorities
 
@@ -290,116 +265,3 @@ When building this system, remember:
 6. **Performance First**: All operations should be optimized for responsiveness and reliability
 7. **Design Consistency**: Use the modern design system and component library for all UI development
 8. **User Experience**: Prioritize connection awareness, loading states, and error feedback
-
-## Development Roadmap & Next Steps
-
-### Immediate Priorities (Foundation - Implement First)
-
-#### 1. Core UI Development (CRITICAL)
-**Email Management Interface**:
-- **Email List View**: Sortable, filterable email list with live Outlook integration (expand EmailThreadView)
-- **Email Detail Panel**: Rich email content display with inline actions, threading, and project linking
-- **Email Actions Sidebar**: Context-aware action suggestions (move to folder, extract tasks, schedule follow-up)
-- **Email Search & Filter**: Real-time search across subjects, senders, content with project/task context
-- **Email Composition**: Smart draft generation with templates based on recipient and context
-
-**Email Intelligence & Recommendations**:
-- **Context-Aware Email Summary**: Key points extraction considering sender relationship, project relevance, urgency indicators
-- **Smart Action Recommendations**: Intelligent suggestions based on sender (boss/team/external), content analysis, and project context:
-  - **Archive**: Low priority, informational emails with no action needed
-  - **Read Later**: Important but non-urgent emails (articles, updates, reports)
-  - **Reply Required**: Emails needing response with priority based on sender relationship
-  - **Delegate/Forward**: Items better handled by team members with recipient suggestions
-  - **Create Task**: Action items extracted with project assignment and due date suggestions
-  - **Schedule Meeting**: When email content suggests need for discussion or collaboration
-  - **Add to Project**: Link to existing or suggest new project association
-- **Priority Scoring**: Dynamic priority based on sender importance, content urgency, project deadlines, user patterns
-- **Response Templates**: Context-appropriate reply templates based on sender relationship and email type
-
-**Project & Task Management Interface**:
-- **Enhanced Project Dashboard**: Real-time project health, timeline views, resource allocation
-- **Task Management Panel**: Drag-and-drop task organization, dependency visualization, status tracking  
-- **Area Overview Enhancement**: Visual project hierarchy with progress indicators and quick actions
-- **Task Creation Flow**: Smart task extraction from emails, voice input, quick capture
-- **Project Timeline View**: Gantt-style visualization with milestone tracking and deadline alerts
-
-#### 2. User Context Acquisition System (CRITICAL)
-**Personal Profile Management**:
-- **User Profile Setup**: Guided onboarding to capture personal details (DOB, work location, preferences)
-- **Organizational Context**: Role definition, reporting structure, team composition, department/division
-- **Work Patterns**: Schedule preferences, communication style, decision-making patterns
-- **Goal Setting**: Personal and professional objectives with timeline and success metrics
-
-**Organizational Intelligence**:
-- **Contact Management**: Import and categorize contacts (boss, peers, direct reports, external stakeholders)
-- **Team Structure Mapping**: Visual org chart with role definitions and interaction patterns
-- **Project Stakeholder Tracking**: Link contacts to projects with role definitions (sponsor, contributor, approver)
-- **Communication Preferences**: Per-contact communication styles, escalation paths, availability
-
-**Context Learning Engine**:
-- **Behavioral Pattern Recognition**: Learn user habits, peak productivity hours, decision patterns
-- **Preference Learning**: Communication style, project management approach, priority frameworks
-- **Historical Context**: Track decisions, outcomes, and lessons learned for future recommendations
-- **Dynamic Context Updates**: Continuous learning from user interactions and feedback
-
-#### 3. Enhanced Email Intelligence (Building on UI)
-- **Smart Email Actions**: Content-based action suggestions integrated into email detail panel
-- **Email Threading**: Proper conversation threading using Outlook's thread_id with visual indicators
-- **Project-Email Linking**: Automatic and manual email-to-project association with confidence scoring
-- **Draft Generation**: Context-aware email composition using recipient history and project context
-
-### Medium-term Enhancements (2-4 weeks)
-
-#### Multi-Channel Integration
-- **Calendar Integration**: Connect with Outlook Calendar for meeting-aware task scheduling
-- **Teams/Slack Integration**: Extend context awareness to team chat platforms
-- **Document Intelligence**: OCR and analysis of attached documents for task/project extraction
-- **Mobile Companion**: Build mobile interface for on-the-go status updates and quick actions
-
-#### Advanced AI Capabilities  
-- **Custom Agent Training**: Allow users to train specialized agents for domain-specific tasks
-- **Multi-language Support**: Handle emails and content in multiple languages with translation
-- **Voice Interface**: Add voice commands and dictation for hands-free operation
-- **Predictive Analytics**: Forecast project timelines and potential bottlenecks using historical data
-
-#### Collaboration Features
-- **Team Dashboards**: Multi-user project visibility with role-based access control
-- **Delegation Tracking**: Monitor delegated tasks across team members with status updates
-- **Knowledge Base**: Build searchable repository of decisions, templates, and best practices
-- **Performance Analytics**: Track productivity metrics and provide insights for improvement
-
-### Long-term Vision (1-3 months)
-
-#### Enterprise Integration
-- **SSO Authentication**: Enterprise login integration with Azure AD/Google Workspace
-- **API Gateway**: RESTful API for third-party integrations and custom extensions
-- **Compliance Features**: Audit trails, data retention policies, and regulatory compliance tools
-- **Scalable Architecture**: Multi-tenant support with cloud deployment options
-
-#### AI-Powered Insights
-- **Strategic Planning**: Long-term goal tracking with milestone prediction and risk assessment  
-- **Competitive Intelligence**: Monitor industry trends and suggest strategic opportunities
-- **Performance Optimization**: Machine learning-driven productivity improvement recommendations
-- **Executive Reporting**: Automated executive summaries with key metrics and insights
-
-### Technical Debt & Infrastructure
-
-#### Code Quality Improvements
-- **Comprehensive Testing**: Unit tests, integration tests, and end-to-end test coverage
-- **Type Safety**: Complete TypeScript coverage in frontend with strict mode enabled
-- **Error Handling**: Centralized error handling with user-friendly error messages
-- **Performance Monitoring**: APM integration with performance metrics and alerting
-
-#### Security & Reliability
-- **Data Encryption**: End-to-end encryption for sensitive email and project data
-- **Backup Strategy**: Automated backups with disaster recovery procedures
-- **Security Audit**: Vulnerability assessment and penetration testing
-- **Monitoring & Alerting**: Production monitoring with automated incident response
-
-### Implementation Notes
-
-**Development Approach**: Prioritize user value over technical complexity. Each feature should solve a real productivity problem and integrate seamlessly with existing workflows.
-
-**Quality Gates**: Every new feature requires comprehensive testing, documentation updates, and user experience validation before deployment.
-
-**User Feedback Loop**: Implement analytics and feedback mechanisms to measure feature adoption and effectiveness, informing future development priorities.

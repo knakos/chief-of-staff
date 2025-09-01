@@ -59,4 +59,4 @@ echo Backend will start on http://127.0.0.1:8787
 echo.
 echo After backend starts, run start-frontend.cmd in another terminal
 echo.
-uvicorn app:app --host 127.0.0.1 --port 8787 --reload --reload-dir="." --reload-exclude=".venv/**" --reload-exclude="__pycache__/**" --reload-exclude="*.pyc" --log-level warning
+uvicorn app:app --host 127.0.0.1 --port 8787 --reload

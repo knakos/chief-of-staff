@@ -7,10 +7,9 @@ from sqlalchemy.orm import Session
 
 from .com_connector import OutlookCOMConnector, COM_AVAILABLE
 from .auth import OutlookAuthManager
-# EmailSyncService removed - no longer needed without database email storage
+from .sync_service import EmailSyncService
 from .folder_manager import GTDFolderManager
 from .connector import GraphAPIConnector
-from .property_sync import OutlookPropertySync
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +23,8 @@ class HybridOutlookService:
         # Graph API components  
         self.graph_connector = GraphAPIConnector()
         self.auth_manager = OutlookAuthManager()
-        # sync_service removed - no longer needed without database email storage
+        self.sync_service = EmailSyncService(self.graph_connector, self.auth_manager)
         self.folder_manager = GTDFolderManager(self.graph_connector, self.auth_manager)
-        self.property_sync = OutlookPropertySync()
         
         self._connection_method = None  # "com" or "graph"
     
@@ -197,7 +195,80 @@ class HybridOutlookService:
                 "error": "No connection available"
             }
     
-    # sync_emails method removed - emails are accessed directly from Outlook, not stored in database
+    async def sync_emails(self, db: Session) -> Dict[str, Any]:
+        """Sync emails using available method"""
+        logger.info(f"Starting sync_emails with connection method: {self._connection_method}")
+        logger.info(f"COM connector exists: {self.com_connector is not None}")
+        logger.info(f"COM connector connected: {self.com_connector.is_connected() if self.com_connector else False}")
+        
+        if self._connection_method == "com" and self.com_connector:
+            logger.info("Using COM method to get messages...")
+            # Get messages via COM and store in database
+            messages = self.com_connector.get_messages(limit=100)
+            logger.info(f"COM connector returned {len(messages)} messages")
+            
+            synced_count = 0
+            for msg_data in messages:
+                try:
+                    # Check if email already exists
+                    from models import Email
+                    existing = db.query(Email).filter(
+                        Email.outlook_id == msg_data["id"]
+                    ).first()
+                    
+                    if not existing:
+                        # Create new email record
+                        new_email = Email(
+                            outlook_id=msg_data["id"],
+                            subject=msg_data["subject"],
+                            sender=msg_data["sender"],
+                            sender_name=msg_data["sender_name"],
+                            body_content=msg_data["body_content"],
+                            body_preview=msg_data["body_preview"], 
+                            received_at=msg_data["received_at"],
+                            sent_at=msg_data["sent_at"],
+                            is_read=msg_data["is_read"],
+                            importance=msg_data["importance"],
+                            has_attachments=msg_data["has_attachments"]
+                        )
+                        db.add(new_email)
+                        synced_count += 1
+                
+                except Exception as e:
+                    logger.error(f"Failed to sync COM message: {e}")
+                    continue
+            
+            db.commit()
+            return {
+                "success": True,
+                "method": "COM",
+                "synced_count": synced_count,
+                "total_messages": len(messages)
+            }
+            
+        elif self._connection_method == "graph":
+            try:
+                # Use existing Graph API sync
+                result = await self.sync_service.delta_sync(db)
+                return {
+                    "success": True,
+                    "method": "Graph API",
+                    "synced_count": len(result),
+                    "emails": result
+                }
+            except Exception as e:
+                logger.error(f"Graph API sync failed: {e}")
+                return {
+                    "success": False,
+                    "method": "Graph API",
+                    "error": str(e)
+                }
+        else:
+            return {
+                "success": False,
+                "method": None,
+                "error": "No connection available"
+            }
     
     async def move_email(self, email_id: str, folder_name: str) -> bool:
         """Move email using available method"""
@@ -210,76 +281,3 @@ class HybridOutlookService:
             return False
         else:
             return False
-    
-    async def sync_email_analysis_to_outlook(self, email_schema) -> bool:
-        """
-        Sync COS email analysis data back to Outlook as custom properties
-        
-        Args:
-            email_schema: EmailSchema with analysis data to sync
-            
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        try:
-            from schemas.email_schema import EmailSchema
-            
-            if not isinstance(email_schema, EmailSchema):
-                logger.error("Invalid email schema provided for Outlook sync")
-                return False
-                
-            if self._connection_method == "com" and self.com_connector:
-                # Get the Outlook item
-                outlook_item = self.com_connector.namespace.GetItemFromID(email_schema.id)
-                if not outlook_item:
-                    logger.warning(f"Could not find Outlook item for email {email_schema.id}")
-                    return False
-                
-                # Sync COS data to Outlook properties
-                self.property_sync.com_connector = self.com_connector
-                success = self.property_sync.write_cos_data_to_outlook(email_schema, outlook_item)
-                
-                if success:
-                    logger.info(f"Successfully synced COS analysis to Outlook for email: {email_schema.subject[:50]}")
-                return success
-                
-            else:
-                logger.warning("COM connection not available for property sync")
-                return False
-                
-        except Exception as e:
-            logger.error(f"Failed to sync email analysis to Outlook: {e}")
-            return False
-    
-    async def load_email_with_cos_data(self, email_id: str):
-        """
-        Load an email from Outlook including any existing COS data from properties
-        
-        Args:
-            email_id: Outlook EntryID of the email
-            
-        Returns:
-            EmailSchema with COS data populated from Outlook properties
-        """
-        try:
-            if self._connection_method == "com" and self.com_connector:
-                # Get the Outlook item
-                outlook_item = self.com_connector.namespace.GetItemFromID(email_id)
-                if not outlook_item:
-                    logger.warning(f"Could not find Outlook item for email {email_id}")
-                    return None
-                
-                # Load with COS data enhancement
-                from .property_sync import load_email_from_outlook_with_cos_data
-                email_schema = load_email_from_outlook_with_cos_data(outlook_item, self.com_connector)
-                
-                logger.debug(f"Loaded email with COS data: {email_schema.subject[:50]}")
-                return email_schema
-                
-            else:
-                logger.warning("COM connection not available for loading COS data")
-                return None
-                
-        except Exception as e:
-            logger.error(f"Failed to load email with COS data: {e}")
-            return None

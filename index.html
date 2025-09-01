@@ -4,156 +4,201 @@
   <meta charset="utf-8" />
   <title>Chief of Staff</title>
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' ws://127.0.0.1:8788;">
+        content="default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws://127.0.0.1:8787;">
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   
-  <!-- Load design system -->
+  <!-- Load custom fonts -->
+  <link rel="stylesheet" href="assets/fonts/fonts.css?v=8">
   <link rel="stylesheet" href="design/modern-tokens.css?v=8">
   
-  <!-- Load fonts from Google -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  
-  <!-- Load React for development -->
+  <!-- Load React and Babel for development -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-
+  <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- Load URL formatting utilities -->
+  <script src="utils/url-formatter.js"></script>
+  
+  <style id="app-styles">
+    /* Settings-based CSS will be loaded dynamically */
+  </style>
+  
+  <script>
+    // Load settings and generate CSS
+    fetch('./design/settings.json')
+      .then(response => response.json())
+      .then(settings => {
+        const theme = settings.theme;
+        let css = ':root {\n';
+        
+        // Colors
+        css += `  --bg-primary: ${theme.colors.background.primary};\n`;
+        css += `  --bg-secondary: ${theme.colors.background.secondary};\n`;
+        css += `  --bg-tertiary: ${theme.colors.background.tertiary};\n`;
+        css += `  --surface-base: ${theme.colors.surface.default};\n`;
+        css += `  --surface-hover: ${theme.colors.surface.hover};\n`;
+        css += `  --surface-active: ${theme.colors.surface.active};\n`;
+        css += `  --text-primary: ${theme.colors.text.primary};\n`;
+        css += `  --text-secondary: ${theme.colors.text.secondary};\n`;
+        css += `  --text-muted: ${theme.colors.text.muted};\n`;
+        css += `  --text-disabled: ${theme.colors.text.disabled};\n`;
+        css += `  --border-base: ${theme.colors.border.default};\n`;
+        css += `  --border-hover: ${theme.colors.border.hover};\n`;
+        css += `  --border-focus: ${theme.colors.border.focus};\n`;
+        css += `  --brand-primary: ${theme.colors.brand.primary};\n`;
+        css += `  --brand-hover: ${theme.colors.brand.hover};\n`;
+        css += `  --brand-active: ${theme.colors.brand.active};\n`;
+        css += `  --success: ${theme.colors.status.success};\n`;
+        css += `  --success-bg: ${theme.colors.status.successBg};\n`;
+        css += `  --warning: ${theme.colors.status.warning};\n`;
+        css += `  --warning-bg: ${theme.colors.status.warningBg};\n`;
+        css += `  --error: ${theme.colors.status.error};\n`;
+        css += `  --error-bg: ${theme.colors.status.errorBg};\n`;
+        css += `  --info: ${theme.colors.status.info};\n`;
+        css += `  --info-bg: ${theme.colors.status.infoBg};\n`;
+        css += `  --link-primary: ${theme.colors.link.primary};\n`;
+        css += `  --link-hover: ${theme.colors.link.hover};\n`;
+        css += `  --link-visited: ${theme.colors.link.visited};\n`;
+        css += `  --link-underline: ${theme.colors.link.underlineColor};\n`;
+        
+        // Typography  
+        css += `  --font-family: ${theme.typography.fontFamily};\n`;
+        css += `  --font-display: ${theme.typography.fontDisplay};\n`;
+        css += `  --font-mono: ${theme.typography.fontMono};\n`;
+        css += `  --font-size-xs: ${theme.typography.fontSize.xs};\n`;
+        css += `  --font-size-sm: ${theme.typography.fontSize.sm};\n`;
+        css += `  --font-size-base: ${theme.typography.fontSize.base};\n`;
+        css += `  --font-size-lg: ${theme.typography.fontSize.lg};\n`;
+        css += `  --font-size-xl: ${theme.typography.fontSize.xl};\n`;
+        css += `  --font-size-2xl: ${theme.typography.fontSize['2xl']};\n`;
+        css += `  --font-size-3xl: ${theme.typography.fontSize['3xl']};\n`;
+        css += `  --font-weight-normal: ${theme.typography.fontWeight.normal};\n`;
+        css += `  --font-weight-medium: ${theme.typography.fontWeight.medium};\n`;
+        css += `  --font-weight-semibold: ${theme.typography.fontWeight.semibold};\n`;
+        css += `  --font-weight-bold: ${theme.typography.fontWeight.bold};\n`;
+        css += `  --line-height-tight: ${theme.typography.lineHeight.tight};\n`;
+        css += `  --line-height-base: ${theme.typography.lineHeight.base};\n`;
+        css += `  --line-height-relaxed: ${theme.typography.lineHeight.relaxed};\n`;
+        
+        // Spacing
+        Object.entries(theme.spacing).forEach(([key, value]) => {
+          css += `  --space-${key}: ${value};\n`;
+        });
+        
+        // Border radius
+        Object.entries(theme.borderRadius).forEach(([key, value]) => {
+          css += `  --radius-${key}: ${value};\n`;
+        });
+        
+        // Shadows
+        Object.entries(theme.shadows).forEach(([key, value]) => {
+          css += `  --shadow-${key}: ${value};\n`;
+        });
+        
+        // Transitions
+        css += `  --duration-fast: ${theme.transitions.fast};\n`;
+        css += `  --duration-base: ${theme.transitions.base};\n`;
+        css += `  --duration-slow: ${theme.transitions.slow};\n`;
+        css += `  --ease: ${theme.transitions.ease};\n`;
+        
+        // Layout
+        css += `  --sidebar-width: ${settings.layout.sidebar.width};\n`;
+        css += `  --chatbox-width: ${settings.layout.chatbox.width};\n`;
+        
+        css += '}\n';
+        
+        // Apply the generated CSS
+        document.getElementById('app-styles').innerHTML = css;
+      })
+      .catch(err => console.warn('Failed to load settings.json, using default styles'));
+  </script>
+  
   <style>
-    /* Base reset and app styles */
+    
+    /* Base Styles */
     * { box-sizing: border-box; }
     
-    html, body, #root {
+    html, body {
       margin: 0;
       padding: 0;
-      height: 100%;
       font-family: var(--font-family);
+      font-size: var(--font-size-base);
+      line-height: var(--line-height-base);
       background: var(--bg-primary);
       color: var(--text-primary);
+      font-weight: var(--font-weight-normal);
     }
-
-    /* App layout */
+    
+    /* Layout */
     .app-layout {
       display: grid;
-      grid-template-columns: 80px minmax(300px, 400px) 1fr;
+      grid-template-columns: var(--sidebar-width) var(--chatbox-width) 1fr;
       grid-template-rows: 1fr auto;
-      min-height: 100vh;
+      height: 100vh;
       background: var(--bg-primary);
-    }
-
-    @media (max-width: 1024px) {
-      .app-layout {
-        grid-template-columns: 80px minmax(280px, 350px) 1fr;
-      }
-    }
-
-    @media (max-width: 768px) {
-      .app-layout {
-        grid-template-columns: 60px minmax(250px, 300px) 1fr;
-      }
-      
-      .icon-sidebar {
-        padding: 16px 8px;
-      }
-      
-      .icon-btn {
-        width: 40px;
-        height: 40px;
-      }
     }
 
     /* Status bar */
     .status-bar {
       grid-column: 1 / -1;
-      grid-row: 2;
-      background: var(--bg-tertiary);
-      border-top: 1px solid var(--border);
-      padding: 8px 24px;
+      background: var(--surface-base);
+      border-top: 1px solid var(--border-base);
+      padding: var(--space-2) var(--space-4);
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 11px;
-      color: var(--text-muted);
-      min-height: 32px;
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      box-shadow: var(--shadow-lg);
       z-index: 10;
-      position: sticky;
-      bottom: 0;
-      font-family: var(--font-mono);
-    }
-
-    @media (max-width: 768px) {
-      .status-bar {
-        padding: 8px 16px;
-        font-size: 11px;
-      }
-      
-      .status-indicators {
-        gap: 16px;
-      }
-      
-      .status-indicator span {
-        display: none;
-      }
-      
-      .status-indicator::after {
-        content: attr(data-label);
-        font-size: 10px;
-        margin-left: 4px;
-      }
     }
 
     .status-indicators {
       display: flex;
-      gap: 24px;
+      gap: var(--space-6);
     }
 
     .status-indicator {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: var(--space-2);
     }
 
-    .status-indicator .status-dot {
-      width: 6px;
-      height: 6px;
-    }
-    
-    .status-indicator {
-      font-size: 11px;
-    }
-    
-    .status-indicator.connected {
-      color: var(--success);
-    }
-    
-    .status-indicator.connecting {
-      color: var(--warning);
-    }
-    
-    .status-indicator.disconnected {
-      color: var(--error);
-    }
-    
-    .status-indicator.ai {
-      color: var(--info);
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
     }
 
-    /* Icon sidebar */
+    .status-dot.connected { background: var(--success); }
+    .status-dot.connecting { background: var(--warning); }
+    .status-dot.disconnected { background: var(--error); }
+
+    .status-text {
+      font-family: var(--font-mono);
+      font-size: var(--font-size-xs);
+    }
+
+    .status-text.connected { color: var(--success); }
+    .status-text.connecting { color: var(--warning); }
+    .status-text.disconnected { color: var(--error); }
+
+    /* Left icon sidebar */
     .icon-sidebar {
-      background: var(--bg-secondary);
-      border-right: 1px solid var(--border);
+      background: var(--surface-base);
+      border-right: 1px solid var(--border-base);
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 24px 16px;
-      overflow-y: auto;
-      overflow-x: hidden;
+      padding: var(--space-4) var(--space-2);
+      box-shadow: var(--shadow-base);
     }
 
     .icon-nav {
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: var(--space-3);
     }
 
     .icon-btn {
@@ -163,11 +208,12 @@
       width: 48px;
       height: 48px;
       border: none;
-      border-radius: 12px;
+      border-radius: var(--radius-lg);
       background: transparent;
       color: var(--text-muted);
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: all var(--duration-fast) var(--duration-ease);
+      font-family: var(--font-display);
     }
 
     .icon-btn:hover {
@@ -177,680 +223,430 @@
 
     .icon-btn.active {
       background: var(--brand-primary);
-      color: var(--bg-primary);
+      color: white;
     }
 
-    /* Chat sidebar */
-    .chat-sidebar {
-      background: var(--bg-secondary);
-      border-right: 1px solid var(--border);
+    /* Main content area */
+    .main-area {
+      overflow: hidden;
       display: flex;
       flex-direction: column;
-      overflow: hidden;
     }
 
-    .chat-header {
-      padding: 24px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      gap: 12px;
+    .main-content {
+      flex: 1;
+      padding: var(--space-8);
+      overflow-y: auto;
     }
 
-    .logo {
-      width: 32px;
-      height: 32px;
-      background: var(--brand-primary);
-      border-radius: 8px;
+    .placeholder-content {
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
-      color: white;
-      font-weight: bold;
-      font-size: 14px;
+      height: 100%;
+      text-align: center;
     }
 
-    .chat-title h1 {
-      margin: 0;
-      font-size: 18px;
-      font-weight: 600;
-      color: var(--text-primary);
+    /* Right chatbox panel */
+    .chatbox-panel {
+      background: var(--surface-base);
+      border-left: 1px solid var(--border-base);
+      box-shadow: var(--shadow-lg);
     }
 
-    .connection-status {
+    .chatbox {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .chatbox-header {
+      padding: var(--space-4);
+      border-bottom: 1px solid var(--border-base);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .connection-indicator {
       display: flex;
       align-items: center;
-      gap: 8px;
-      margin-top: 4px;
+      gap: var(--space-2);
     }
 
-    .status-dot {
+    .connection-dot {
       width: 8px;
       height: 8px;
       border-radius: 50%;
     }
 
-    .status-dot.connected { background: var(--success); }
-    .status-dot.connecting { background: var(--warning); }
-    .status-dot.disconnected { background: var(--error); }
+    .connection-dot.connected { background: var(--success); }
+    .connection-dot.connecting { background: var(--warning); }
+    .connection-dot.disconnected { background: var(--error); }
 
-    .status-text {
-      font-size: 14px;
-      color: var(--text-muted);
-    }
-
-    .chat-messages {
+    .messages-area {
       flex: 1;
-      padding: 24px;
+      padding: var(--space-4);
       overflow-y: auto;
       display: flex;
       flex-direction: column;
     }
 
-    .chat-input-area {
-      padding: 24px;
-      border-top: 1px solid var(--border, #334155);
-    }
-
-    .chat-input-wrapper {
-      display: flex;
-      gap: 12px;
-    }
-
-    .chat-input-field {
-      flex: 1;
-      padding: 12px 16px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: var(--bg-primary);
-      color: var(--text-primary);
-      font-size: 14px;
-    }
-
-    .chat-input-field:focus {
-      outline: none;
-      border-color: var(--brand-primary);
-    }
-
-    .chat-send-btn {
-      padding: 12px 16px;
-      background: var(--brand-primary);
-      color: white;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 14px;
-      font-weight: 500;
-      transition: background 0.2s ease;
-    }
-
-    .chat-send-btn:hover:not(:disabled) {
-      background: var(--brand-hover);
-    }
-
-    .chat-send-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    /* Main content */
-    .main-content {
+    .welcome-message {
       display: flex;
       flex-direction: column;
-      height: 100vh;
-      overflow: hidden;
+      align-items: center;
+      text-align: center;
+      padding: var(--space-8) var(--space-4);
     }
 
-    .content-area {
-      flex: 1;
-      padding: 48px;
-      overflow: auto;
+    .welcome-icon {
+      font-size: 3rem;
+      margin-bottom: var(--space-4);
     }
 
-    /* Email Intelligence Layout */
-    .email-management {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 24px;
-      height: 100%;
-    }
-
-    @media (max-width: 1200px) {
-      .email-management {
-        grid-template-columns: 1fr;
-        grid-template-rows: 400px 1fr;
-        gap: 16px;
-      }
-    }
-
-    @media (max-width: 768px) {
-      .email-management {
-        gap: 12px;
-      }
-      
-      .content-area {
-        padding: 24px 16px;
-      }
-      
-      .email-panel {
-        padding: 16px;
-      }
-    }
-
-    .email-panel {
-      background: var(--bg-secondary);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 24px;
+    .quick-commands {
       display: flex;
       flex-direction: column;
-      overflow: hidden;
+      gap: var(--space-2);
+      width: 100%;
     }
 
-    .panel-header {
-      margin-bottom: 20px;
-      padding-bottom: 16px;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .panel-title {
-      margin: 0 0 8px 0;
-      font-size: 18px;
-      font-weight: 600;
-      color: var(--text-primary);
-    }
-
-    .panel-subtitle {
-      margin: 0;
-      font-size: 14px;
-      color: var(--text-muted);
-    }
-
-    .email-list {
-      flex: 1;
-      overflow-y: auto;
-    }
-
-    .email-item {
-      padding: 16px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      margin-bottom: 12px;
+    .quick-cmd-btn {
+      padding: var(--space-2) var(--space-3);
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-base);
+      border-radius: var(--radius-md);
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: all var(--duration-fast) var(--duration-ease);
+      font-family: var(--font-display);
+      font-size: var(--font-size-sm);
+      color: var(--brand-primary);
     }
 
-    .email-item:hover {
+    .quick-cmd-btn:hover {
       background: var(--surface-hover);
       border-color: var(--brand-primary);
     }
 
-    .email-item.selected {
-      background: rgba(59, 130, 246, 0.1);
-      border-color: var(--brand-primary);
-    }
-
-    .email-meta {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 8px;
-    }
-
-    .email-sender {
-      font-weight: 500;
-      color: var(--text-primary);
-      font-size: 14px;
-    }
-
-    .email-time {
-      font-size: 12px;
-      color: var(--text-muted);
-    }
-
-    .email-subject {
-      font-size: 14px;
-      font-weight: 500;
-      color: var(--text-primary);
-      margin-bottom: 6px;
-    }
-
-    .email-preview {
-      font-size: 13px;
-      color: var(--text-secondary);
-      line-height: 1.4;
-    }
-
-    .email-priority {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 12px;
-      font-size: 11px;
-      font-weight: 500;
-      text-transform: uppercase;
-      margin-top: 8px;
-    }
-
-    .priority-high {
-      background: rgba(239, 68, 68, 0.2);
-      color: var(--error);
-    }
-
-    .priority-medium {
-      background: rgba(234, 179, 8, 0.2);
-      color: var(--warning);
-    }
-
-    .priority-low {
-      background: rgba(34, 197, 94, 0.2);
-      color: var(--success);
-    }
-
-    /* Email detail */
-    .email-detail-empty {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-      text-align: center;
-    }
-
-    .empty-icon {
-      margin-bottom: 16px;
-      color: var(--text-muted);
-      opacity: 0.5;
-    }
-
-    .empty-title {
-      margin: 0 0 8px 0;
-      font-size: 18px;
-      color: var(--text-primary);
-    }
-
-    .empty-description {
-      margin: 0;
-      color: var(--text-muted);
-      line-height: 1.5;
-    }
-
-    /* Chat interface */
-    .chat-container {
-      background: var(--bg-secondary);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 32px;
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .messages-area {
-      flex: 1;
-      overflow-y: auto;
-      margin-bottom: 24px;
-    }
-
-    .welcome-screen {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-      text-align: center;
-    }
-
-    .welcome-icon {
-      margin-bottom: 24px;
-      color: var(--text-muted);
-      opacity: 0.8;
-    }
-
-    .welcome-title {
-      margin: 0 0 8px 0;
-      font-size: 24px;
-      font-weight: 600;
-      color: var(--text-primary);
-    }
-
-    .welcome-description {
-      margin: 0 0 32px 0;
-      color: var(--text-muted);
-      font-size: 16px;
-      max-width: 400px;
-    }
-
-    .quick-actions {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      width: 100%;
-      max-width: 300px;
-    }
-
-    .quick-action {
-      padding: 12px 16px;
-      background: var(--bg-tertiary);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      color: var(--brand-primary, #3b82f6);
-      cursor: pointer;
-      font-size: 14px;
-      transition: all 0.2s ease;
-    }
-
-    .quick-action:hover {
-      background: var(--surface-hover, #475569);
-      border-color: var(--brand-primary);
-    }
-
-    .message {
-      margin-bottom: 16px;
-      display: flex;
-      flex-direction: column;
-    }
-
-    .message.user {
-      align-items: flex-end;
-    }
-
-    .message.agent {
-      align-items: flex-start;
-    }
-
-    .message-content {
-      max-width: 80%;
-      padding: 12px 16px;
-      border-radius: 12px;
-      font-size: 14px;
-      line-height: 1.5;
-      white-space: pre-wrap;
-    }
-
-    .message.user .message-content {
-      background: var(--brand-primary);
-      color: white;
-    }
-
-    .message.agent .message-content {
-      background: var(--surface);
-      color: var(--text-primary);
-    }
-
-    .message.thinking .message-content {
-      background: var(--surface);
-      color: var(--text-muted);
-      opacity: 0.7;
-      font-style: italic;
-    }
-
-    .message-time {
-      font-size: 12px;
-      color: var(--text-muted);
-      margin-top: 4px;
-    }
-
-    /* Input area */
     .input-area {
+      padding: var(--space-4);
+      border-top: 1px solid var(--border-base);
+    }
+
+    .input-wrapper {
       display: flex;
-      gap: 12px;
+      gap: var(--space-2);
     }
 
     .chat-input {
       flex: 1;
-      padding: 12px 16px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
+      padding: var(--space-3);
+      border: 1px solid var(--border-base);
+      border-radius: var(--radius-lg);
       background: var(--bg-primary);
-      color: var(--text-primary);
-      font-size: 14px;
+      font-size: var(--font-size-sm);
     }
 
     .chat-input:focus {
       outline: none;
       border-color: var(--brand-primary);
+      box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.1);
     }
 
-    .send-button {
-      padding: 12px 16px;
+    .send-btn {
+      padding: var(--space-3);
       background: var(--brand-primary);
       color: white;
       border: none;
-      border-radius: 8px;
+      border-radius: var(--radius-lg);
       cursor: pointer;
-      font-size: 14px;
-      font-weight: 500;
-      transition: background 0.2s ease;
-    }
-
-    .send-button:hover:not(:disabled) {
-      background: var(--brand-hover);
-    }
-
-    .send-button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    /* Loading state */
-    .loading-container {
+      transition: all var(--duration-fast) var(--duration-ease);
       display: flex;
       align-items: center;
       justify-content: center;
-      height: 100vh;
-      background: var(--bg-primary);
+      font-family: var(--font-display);
+    }
+
+    .send-btn:hover:not(:disabled) {
+      background: var(--brand-hover);
+    }
+
+    .send-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    /* Chat Message Bubbles */
+    .message {
+      margin-bottom: var(--space-4);
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .message.user {
+      align-items: flex-end;
+    }
+    
+    .message.agent {
+      align-items: flex-start;
+    }
+    
+    .message-content {
+      max-width: 80%;
+      padding: var(--space-3) var(--space-4);
+      border-radius: var(--radius-lg);
+      font-family: var(--font-family);
+      font-size: var(--font-size-sm);
+      line-height: var(--line-height-base);
+      word-wrap: break-word;
+      white-space: pre-wrap;
+    }
+    
+    .message.user .message-content {
+      background: var(--brand-primary);
+      color: white;
+      border-bottom-right-radius: var(--radius-sm);
+    }
+    
+    .message.agent .message-content {
+      background: var(--surface-base);
+      color: var(--text-primary);
+      border: 1px solid var(--border-base);
+      border-bottom-left-radius: var(--radius-sm);
+      box-shadow: var(--shadow-sm);
+    }
+    
+    .message-time {
+      font-size: var(--font-size-xs);
       color: var(--text-muted);
+      margin-top: var(--space-1);
+      font-family: var(--font-display);
     }
-
-    .loading-spinner {
-      width: 32px;
-      height: 32px;
-      border: 3px solid var(--border, #334155);
-      border-top: 3px solid var(--brand-primary, #3b82f6);
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin-right: 12px;
+    
+    .message.user .message-time {
+      text-align: right;
     }
-
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
+    
+    .message.agent .message-time {
+      text-align: left;
     }
+    
+    /* Typing indicator */
+    .message.typing .message-content::after {
+      content: '|';
+      animation: blink 1s infinite;
+      margin-left: 2px;
+    }
+    
+    @keyframes blink {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0; }
+    }
+    
+    /* Thinking indicator */
+    .message.thinking-indicator {
+      align-items: flex-start;
+      margin-bottom: var(--space-2);
+    }
+    
+    .message.thinking-indicator .message-content {
+      background: transparent;
+      color: var(--text-muted);
+      border: none;
+      box-shadow: none;
+      font-style: italic;
+      font-size: var(--font-size-sm);
+      padding: var(--space-2) var(--space-3);
+      animation: fade-pulse 1.5s ease-in-out infinite alternate;
+    }
+    
+    @keyframes fade-pulse {
+      0% { opacity: 0.6; }
+      100% { opacity: 1; }
+    }
+    
+    /* Headings use display font */
+    h1, h2, h3, h4, h5, h6 {
+      font-family: var(--font-display);
+    }
+    
+    /* Utility classes */
+    .text-2xl { font-size: var(--font-size-2xl); }
+    .font-semibold { font-weight: var(--font-weight-semibold); }
+    .font-medium { font-weight: var(--font-weight-medium); }
+    .text-muted { color: var(--text-muted); }
+    .text-sm { color: var(--text-secondary); }
+    .mb-4 { margin-bottom: var(--space-4); }
+    .mb-2 { margin-bottom: var(--space-2); }
   </style>
 </head>
 <body>
-  <div id="root">
-    <div class="loading-container">
-      <div class="loading-spinner"></div>
-      <span>Loading Chief of Staff...</span>
-    </div>
-  </div>
-
-  <script>
+  <div id="root"></div>
+  
+  <script type="text/babel">
     const { useState, useEffect, useRef } = React;
-
-    // Sample email data for demonstration
-    const sampleEmails = [
-      {
-        id: 1,
-        sender: "Sarah Johnson",
-        sender_email: "sarah.johnson@company.com",
-        subject: "Q4 Budget Review Meeting",
-        preview: "Hi, I wanted to schedule our Q4 budget review meeting for next week. Are you available on Tuesday or Wednesday afternoon?",
-        received_at: "2024-08-31T14:30:00Z",
-        priority: "high",
-        is_read: false,
-        analysis: {
-          key_points: ["Budget review meeting", "Q4 planning", "Scheduling request"],
-          tone: "neutral",
-          urgency_level: "high",
-          requires_action: true,
-          recommendations: [
-            { action: "reply", confidence: 0.9, rationale: "Meeting request requires response" },
-            { action: "schedule_meeting", confidence: 0.8, rationale: "Calendar scheduling needed" }
-          ]
-        }
-      },
-      {
-        id: 2,
-        sender: "Marketing Team",
-        sender_email: "marketing@company.com",
-        subject: "Campaign Performance Report - August 2024",
-        preview: "Please find attached the comprehensive performance report for our August marketing campaigns. Overall engagement is up 23% compared to last month.",
-        received_at: "2024-08-31T11:15:00Z",
-        priority: "medium",
-        is_read: false,
-        analysis: {
-          key_points: ["Performance report", "23% engagement increase", "August campaigns"],
-          tone: "positive",
-          urgency_level: "low",
-          requires_action: false,
-          recommendations: [
-            { action: "read_later", confidence: 0.7, rationale: "Informational content for review" },
-            { action: "archive", confidence: 0.6, rationale: "Can be archived after review" }
-          ]
-        }
-      },
-      {
-        id: 3,
-        sender: "IT Support",
-        sender_email: "it-support@company.com",
-        subject: "Security Update Required - Action Needed",
-        preview: "URGENT: Please update your system password and enable two-factor authentication by end of day today. Click the link below to get started.",
-        received_at: "2024-08-31T09:45:00Z",
-        priority: "high",
-        is_read: true,
-        analysis: {
-          key_points: ["Security update", "Password change", "2FA setup", "Deadline today"],
-          tone: "urgent",
-          urgency_level: "high",
-          requires_action: true,
-          recommendations: [
-            { action: "create_task", confidence: 0.95, rationale: "Critical security task with deadline" },
-            { action: "reply", confidence: 0.3, rationale: "May need IT support if issues arise" }
-          ]
-        }
-      }
-    ];
-
-    function ChiefOfStaffApp() {
-      console.log('ChiefOfStaffApp component initializing...');
-      const [activeRoute, setActiveRoute] = useState('inbox');
+    
+    // URL Formatting Component
+    const FormattedText = ({ text, linkText = "here", className = "" }) => {
+      const [formattedHtml, setFormattedHtml] = useState('');
       
-      // Debug route changes
       useEffect(() => {
-        console.log('Route changed to:', activeRoute);
-      }, [activeRoute]);
+        if (typeof window.UrlFormatter !== 'undefined') {
+          window.UrlFormatter.formatUrlsInText(text, linkText)
+            .then(html => setFormattedHtml(html))
+            .catch(() => setFormattedHtml(text)); // Fallback to original text
+        } else {
+          setFormattedHtml(text);
+        }
+      }, [text, linkText]);
+      
+      return React.createElement('div', {
+        className: `formatted-text ${className}`,
+        dangerouslySetInnerHTML: { __html: formattedHtml }
+      });
+    };
+    
+    // URL Link Component (for single URLs)  
+    const UrlLink = ({ url, children, className = "" }) => {
+      const linkStyle = {
+        color: 'var(--link-primary)',
+        textDecoration: 'underline',
+        textDecorationColor: 'var(--link-underline)',
+        cursor: 'pointer',
+        transition: 'color 0.2s ease'
+      };
+      
+      const handleMouseOver = (e) => {
+        e.target.style.color = 'var(--link-hover)';
+      };
+      
+      const handleMouseOut = (e) => {
+        e.target.style.color = 'var(--link-primary)';
+      };
+      
+      return React.createElement('a', {
+        href: url,
+        target: '_blank',
+        rel: 'noopener noreferrer',
+        className: `url-link ${className}`,
+        style: linkStyle,
+        onMouseOver: handleMouseOver,
+        onMouseOut: handleMouseOut
+      }, children || '[here]');
+    };
+    
+    function App() {
+      const [activeSection, setActiveSection] = useState("main");
       const [connectionStatus, setConnectionStatus] = useState('connecting');
-      const [outlookStatus, setOutlookStatus] = useState('disconnected');
+      const [aiStatus, setAiStatus] = useState({ status: 'unknown', provider: 'Anthropic', model: 'Claude-3.5-Sonnet' });
+      const [outlookStatus, setOutlookStatus] = useState({ status: 'disconnected', method: null });
       const [messages, setMessages] = useState([]);
-      const [inputText, setInputText] = useState('');
-      const [selectedEmail, setSelectedEmail] = useState(null);
-      const [emails, setEmails] = useState([]);
-      const wsRef = useRef(null);
+      const [inputText, setInputText] = useState("");
       const messagesEndRef = useRef(null);
+      const wsRef = useRef(null);
 
-      // WebSocket connection - TEST
       useEffect(() => {
-        console.log('=== WEBSOCKET USEEFFECT STARTED ===');
-        try {
-          console.log('WebSocket useEffect triggered - attempting connection');
-          console.log('Attempting WebSocket connection to ws://127.0.0.1:8788/ws');
-        const ws = new WebSocket('ws://127.0.0.1:8788/ws');
+        const ws = new WebSocket("ws://127.0.0.1:8787/ws");
         wsRef.current = ws;
         
         ws.onopen = () => {
           setConnectionStatus('connected');
-          console.log('WebSocket connected successfully');
-          // Request current status update
-          console.log('Requesting backend status...');
-          ws.send(JSON.stringify({
-            event: 'status:request',
-            data: {}
-          }));
-          // Request recent emails
-          console.log('Requesting recent emails from backend...');
-          ws.send(JSON.stringify({
-            event: 'email:get_recent',
-            data: { limit: 50 }
-          }));
+          // Request initial status
+          ws.send(JSON.stringify({ event: 'status:request' }));
         };
-        
-        ws.onclose = () => {
-          setConnectionStatus('disconnected');
-          console.log('WebSocket disconnected');
-        };
-        
-        ws.onerror = (error) => {
-          setConnectionStatus('disconnected');
-          console.error('WebSocket error:', error);
-        };
+        ws.onclose = () => setConnectionStatus('disconnected');
+        ws.onerror = () => setConnectionStatus('disconnected');
         
         ws.onmessage = (event) => {
           try {
-            console.log('Raw WebSocket message received:', event.data);
             const message = JSON.parse(event.data);
-            console.log('Parsed WebSocket message:', message);
             
-            if (message.event === 'thread:append') {
+            // Handle status updates
+            if (message.event === 'status:ai') {
+              console.log('Received AI status:', message.data);
+              setAiStatus(message.data);
+            } else if (message.event === 'status:outlook') {
+              console.log('Received Outlook status:', message.data);
+              setOutlookStatus(message.data);
+            } else if (message.event === 'thread:append') {
               const newMessage = message.data.message;
-              // Remove thinking message and add real response
-              setMessages(prev => {
-                const filtered = prev.filter(msg => !msg.isThinking);
-                return [...filtered, newMessage];
-              });
-            } else if (message.event === 'email:list') {
-              // Handle email list updates
-              if (message.data && message.data.emails) {
-                setEmails(message.data.emails);
-              }
-            } else if (message.event === 'email:recent_list') {
-              // Handle recent emails with analysis
-              console.log('Received email:recent_list event:', message);
-              if (message.data && message.data.emails) {
-                console.log('Raw email data:', message.data.emails);
-                // Transform the analyzed emails to match our UI format
-                const transformedEmails = message.data.emails.map(item => ({
-                  id: item.id,
-                  subject: item.subject || 'No Subject',
-                  sender: item.sender_name || item.sender_email,
-                  preview: item.body_preview || 'No preview available',
-                  received_at: item.received_at,
-                  priority: item.priority || 'medium',
-                  recommendations: item.analysis?.recommendations || []
-                }));
-                setEmails(transformedEmails);
-                console.log('Loaded', transformedEmails.length, 'emails from Outlook');
+              if (newMessage.role === 'agent') {
+                // AI is working, update status
+                setAiStatus(prev => ({ ...prev, status: 'connected' }));
+                
+                // Remove thinking indicator and add AI message
+                setMessages(prev => {
+                  // Filter out thinking indicators
+                  const withoutThinking = prev.filter(msg => !msg.isThinking);
+                  // Add AI message with timestamp
+                  const messageWithTimestamp = { 
+                    ...newMessage, 
+                    content: '', 
+                    isTyping: true,
+                    timestamp: new Date().toLocaleTimeString()
+                  };
+                  return [...withoutThinking, messageWithTimestamp];
+                });
+                
+                // Start typewriter effect
+                setTimeout(() => {
+                  startTypewriter(newMessage.content, newMessage.id);
+                }, 100);
               } else {
-                console.log('No email data in response:', message);
-              }
-            } else if (message.event === 'status:outlook' || message.event === 'outlook:connected') {
-              // Handle outlook status updates
-              if (message.data && message.data.status) {
-                setOutlookStatus(message.data.status);
-              } else if (message.event === 'outlook:connected') {
-                setOutlookStatus('connected');
+                setMessages(prev => [...prev, newMessage]);
               }
             }
-          } catch (error) {
-            console.error('Error parsing WebSocket message:', error);
+          } catch (e) {
+            console.error('Error parsing message:', e);
           }
         };
         
         return () => {
-          if (wsRef.current) {
-            wsRef.current.close();
-          }
+          wsRef.current = null;
+          ws.close();
         };
-        } catch (error) {
-          console.error('Error in WebSocket useEffect:', error);
-        }
       }, []);
 
-      // Auto-scroll to bottom of messages
+      // Periodic status checking
+      useEffect(() => {
+        const statusInterval = setInterval(() => {
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            console.log('Sending status request...');
+            wsRef.current.send(JSON.stringify({ event: 'status:request' }));
+          } else {
+            console.log('WebSocket not ready for status request');
+          }
+        }, 10000); // Check every 10 seconds
+
+        return () => clearInterval(statusInterval);
+      }, []);
+
       useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, [messages]);
+
+      const startTypewriter = (fullText, messageId) => {
+        let currentIndex = 0;
+        const typeSpeed = 15; // milliseconds per character (faster)
+        
+        const typeInterval = setInterval(() => {
+          if (currentIndex <= fullText.length) {
+            const partialText = fullText.substring(0, currentIndex);
+            setMessages(prev => 
+              prev.map(msg => 
+                msg.id === messageId 
+                  ? { ...msg, content: partialText, isTyping: currentIndex < fullText.length }
+                  : msg
+              )
+            );
+            currentIndex++;
+          } else {
+            clearInterval(typeInterval);
+          }
+        }, typeSpeed);
+      };
 
       const sendMessage = () => {
         if (!inputText.trim() || connectionStatus !== 'connected' || !wsRef.current) return;
@@ -859,39 +655,32 @@
           id: Date.now(),
           role: 'user',
           content: inputText,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toLocaleTimeString()
         };
         
+        // Add user message to UI immediately
         setMessages(prev => [...prev, userMessage]);
         
         // Add thinking indicator
         const thinkingMessage = {
-          id: Date.now() + 1,
-          role: 'assistant',
+          id: 'thinking-' + Date.now(),
+          role: 'thinking-indicator',
           content: 'Thinking...',
-          timestamp: new Date().toISOString(),
           isThinking: true
         };
         setMessages(prev => [...prev, thinkingMessage]);
         
-        wsRef.current.send(JSON.stringify({
+        // Send message to backend via WebSocket
+        const messageData = {
           event: 'thread:send',
           data: {
             text: inputText,
             timestamp: new Date().toISOString()
           }
-        }));
+        };
         
-        setInputText('');
-      };
-
-      const requestRecentEmails = () => {
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({
-            event: 'email:get_recent',
-            data: { limit: 50 }
-          }));
-        }
+        wsRef.current.send(JSON.stringify(messageData));
+        setInputText("");
       };
 
       const handleKeyPress = (e) => {
@@ -901,420 +690,184 @@
         }
       };
 
-      const handleEmailSelect = (email) => {
-        setSelectedEmail(email);
-      };
+      // Status bar component
+      const StatusBar = () => {
+        const formatAiStatus = () => {
+          if (aiStatus.status === 'connected') {
+            return `${aiStatus.provider} | ${aiStatus.model}`;
+          } else if (aiStatus.status === 'connecting') {
+            return `${aiStatus.provider} | Connecting...`;
+          } else {
+            return `${aiStatus.provider} | Disconnected`;
+          }
+        };
 
-      const formatTime = (timestamp) => {
-        return new Date(timestamp).toLocaleTimeString('en-US', {
-          hour: 'numeric',
-          minute: '2-digit',
-          hour12: true
-        });
-      };
+        const formatOutlookStatus = () => {
+          if (outlookStatus.status === 'connected' && outlookStatus.method) {
+            return `Outlook:${outlookStatus.method.toUpperCase()}`;
+          } else if (outlookStatus.status === 'connecting') {
+            return 'Outlook:Connecting...';
+          } else {
+            return 'Outlook:Disconnected';
+          }
+        };
 
-      const formatDate = (timestamp) => {
-        const date = new Date(timestamp);
-        const now = new Date();
-        const diffTime = now - date;
-        const diffHours = diffTime / (1000 * 60 * 60);
-        
-        if (diffHours < 24) {
-          return formatTime(timestamp);
-        } else if (diffHours < 48) {
-          return 'Yesterday';
-        } else {
-          return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        }
-      };
-
-      // Navigation items with SVG icons
-      const navItems = [
-        { 
-          id: 'inbox', 
-          label: 'Inbox', 
-          icon: React.createElement('svg', { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2 }, [
-            React.createElement('path', { key: 'path1', d: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' }),
-            React.createElement('polyline', { key: 'polyline1', points: '9,22 9,12 15,12 15,22' })
-          ])
-        },
-        { 
-          id: 'emails', 
-          label: 'Smart Emails', 
-          icon: React.createElement('svg', { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2 }, [
-            React.createElement('path', { key: 'path1', d: 'M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z' }),
-            React.createElement('polyline', { key: 'polyline1', points: '22,6 12,13 2,6' })
-          ])
-        },
-        { 
-          id: 'projects', 
-          label: 'Projects', 
-          icon: React.createElement('svg', { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2 }, [
-            React.createElement('path', { key: 'path1', d: 'M9 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-4' }),
-            React.createElement('polyline', { key: 'polyline1', points: '9,11 12,14 15,11' }),
-            React.createElement('line', { key: 'line1', x1: 12, y1: 14, x2: 12, y2: 3 })
-          ])
-        },
-        { 
-          id: 'profile', 
-          label: 'Profile', 
-          icon: React.createElement('svg', { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2 }, [
-            React.createElement('path', { key: 'path1', d: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2' }),
-            React.createElement('circle', { key: 'circle1', cx: 12, cy: 7, r: 4 })
-          ])
-        },
-        { 
-          id: 'contacts', 
-          label: 'Network', 
-          icon: React.createElement('svg', { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2 }, [
-            React.createElement('path', { key: 'path1', d: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2' }),
-            React.createElement('circle', { key: 'circle1', cx: 9, cy: 7, r: 4 }),
-            React.createElement('path', { key: 'path2', d: 'M23 21v-2a4 4 0 0 0-3-3.87' }),
-            React.createElement('path', { key: 'path3', d: 'M16 3.13a4 4 0 0 1 0 7.75' })
-          ])
-        }
-      ];
-
-      const renderIconSidebar = () => {
-        return React.createElement('aside', { className: 'icon-sidebar' }, [
-          React.createElement('nav', { key: 'nav', className: 'icon-nav' },
-            navItems.map(item =>
-              React.createElement('button', {
-                key: item.id,
-                className: `icon-btn ${activeRoute === item.id ? 'active' : ''}`,
-                onClick: () => setActiveRoute(item.id),
-                title: item.label
-              }, item.icon)
-            )
-          )
-        ]);
-      };
-
-      const renderChatSidebar = () => {
-        return React.createElement('aside', { className: 'chat-sidebar' }, [
-          // Header
-          React.createElement('div', { key: 'header', className: 'chat-header' }, [
-            React.createElement('div', { key: 'logo', className: 'logo' }, 'COS'),
-            React.createElement('div', { key: 'title', className: 'chat-title' }, [
-              React.createElement('h1', { key: 'h1' }, 'Chief of Staff'),
-              React.createElement('div', { key: 'status', className: 'connection-status' }, [
-                React.createElement('div', {
-                  key: 'dot',
-                  className: `status-dot ${connectionStatus}`
-                }),
-                React.createElement('span', {
-                  key: 'text',
-                  className: 'status-text'
-                }, connectionStatus)
-              ])
-            ])
-          ]),
-          
-          // Messages
-          React.createElement('div', { key: 'messages', className: 'chat-messages' }, [
-            messages.length === 0 ? React.createElement('div', { key: 'welcome', className: 'welcome-screen' }, [
-              React.createElement('div', { key: 'icon', className: 'welcome-icon' }, 
-                React.createElement('svg', { width: 48, height: 48, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2 }, [
-                  React.createElement('path', { key: 'path', d: 'M9 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2h-4' }),
-                  React.createElement('polyline', { key: 'polyline', points: '9,11 12,14 15,11' }),
-                  React.createElement('line', { key: 'line', x1: 12, y1: 14, x2: 12, y2: 3 })
-                ])
-              ),
-              React.createElement('h2', { key: 'title', className: 'welcome-title' }, 'Welcome to Chief of Staff'),
-              React.createElement('p', { key: 'desc', className: 'welcome-description' }, 
-                'Your intelligent productivity assistant. Try asking about your emails, projects, or daily planning.'
-              ),
-              React.createElement('div', { key: 'actions', className: 'quick-actions' },
-                [
-                  'Help me plan my day',
-                  'What\'s in my inbox?',
-                  '/outlook connect'
-                ].map(suggestion =>
-                  React.createElement('button', {
-                    key: suggestion,
-                    className: 'quick-action',
-                    onClick: () => setInputText(suggestion)
-                  }, suggestion)
-                )
-              )
-            ]) : messages.map((msg, idx) =>
-              React.createElement('div', {
-                key: idx,
-                className: `message ${msg.role}${msg.isThinking ? ' thinking' : ''}`
-              }, [
-                React.createElement('div', { key: 'content', className: 'message-content' }, msg.content),
-                msg.timestamp && React.createElement('div', { key: 'time', className: 'message-time' }, 
-                  new Date(msg.timestamp).toLocaleTimeString()
-                )
-              ])
-            ),
-            React.createElement('div', { key: 'end', ref: messagesEndRef })
-          ]),
-          
-          // Input
-          React.createElement('div', { key: 'input-area', className: 'chat-input-area' }, [
-            React.createElement('div', { key: 'wrapper', className: 'chat-input-wrapper' }, [
-              React.createElement('input', {
-                key: 'input-field',
-                className: 'chat-input-field',
-                type: 'text',
-                placeholder: 'Ask me anything...',
-                value: inputText,
-                onChange: (e) => setInputText(e.target.value),
-                onKeyPress: handleKeyPress,
-                disabled: connectionStatus !== 'connected'
-              }),
-              React.createElement('button', {
-                key: 'send',
-                className: 'chat-send-btn',
-                onClick: sendMessage,
-                disabled: !inputText.trim() || connectionStatus !== 'connected'
-              }, 'Send')
-            ])
-          ])
-        ]);
-      };
-
-      const renderStatusBar = () => {
-        console.log('Rendering status bar...', connectionStatus);
-        return React.createElement('div', { className: 'status-bar' }, [
-          React.createElement('div', { key: 'indicators', className: 'status-indicators' }, [
-            // Backend Status
-            React.createElement('div', { 
-              key: 'backend', 
-              className: `status-indicator ${connectionStatus}`,
-              'data-label': connectionStatus.substring(0, 1).toUpperCase()
-            }, [
-              React.createElement('div', {
-                key: 'dot',
-                className: `status-dot ${connectionStatus}`
-              }),
-              React.createElement('span', { key: 'text' }, `Backend ${connectionStatus}`)
-            ]),
+        return React.createElement('div', { className: 'status-bar' },
+          React.createElement('div', { className: 'status-indicators' },
             // AI Status
-            React.createElement('div', { 
-              key: 'ai', 
-              className: 'status-indicator ai',
-              'data-label': 'AI'
-            }, [
-              React.createElement('div', {
-                key: 'dot',
-                className: 'status-dot connected'
+            React.createElement('div', { className: 'status-indicator' },
+              React.createElement('div', { 
+                className: `status-dot ${aiStatus.status}`,
+                title: `AI Status: ${aiStatus.status}`
               }),
-              React.createElement('span', { key: 'text' }, 'Anthropic | Claude-3.5-Sonnet')
-            ]),
-            // Outlook Status
-            React.createElement('div', { 
-              key: 'outlook', 
-              className: `status-indicator ${outlookStatus}`,
-              'data-label': 'OUT'
-            }, [
-              React.createElement('div', {
-                key: 'dot',
-                className: `status-dot ${outlookStatus}`
+              React.createElement('span', { 
+                className: `status-text ${aiStatus.status}` 
+              }, formatAiStatus())
+            ),
+            // Outlook Status  
+            React.createElement('div', { className: 'status-indicator' },
+              React.createElement('div', { 
+                className: `status-dot ${outlookStatus.status}`,
+                title: `Outlook Status: ${outlookStatus.status}`
               }),
-              React.createElement('span', { key: 'text' }, `Outlook:${outlookStatus.charAt(0).toUpperCase() + outlookStatus.slice(1)}`)
-            ])
-          ]),
-          React.createElement('div', { key: 'info' }, [
-            React.createElement('span', { key: 'text' }, 'Ready')
-          ])
-        ]);
-      };
-
-      const renderEmailList = () => {
-        return React.createElement('div', { className: 'email-panel' }, [
-          React.createElement('div', { key: 'header', className: 'panel-header' }, [
-            React.createElement('h2', { key: 'title', className: 'panel-title' }, 'Smart Email List'),
-            React.createElement('p', { key: 'subtitle', className: 'panel-subtitle' }, 
-              `${emails.length} emails with AI-powered insights`
+              React.createElement('span', { 
+                className: `status-text ${outlookStatus.status}` 
+              }, formatOutlookStatus())
             )
-          ]),
-          React.createElement('div', { key: 'list', className: 'email-list' },
-            emails.map(email =>
-              React.createElement('div', {
-                key: email.id,
-                className: `email-item ${selectedEmail?.id === email.id ? 'selected' : ''}`,
-                onClick: () => handleEmailSelect(email)
-              }, [
-                React.createElement('div', { key: 'meta', className: 'email-meta' }, [
-                  React.createElement('span', { key: 'sender', className: 'email-sender' }, email.sender),
-                  React.createElement('span', { key: 'time', className: 'email-time' }, formatDate(email.received_at))
-                ]),
-                React.createElement('div', { key: 'subject', className: 'email-subject' }, email.subject),
-                React.createElement('div', { key: 'preview', className: 'email-preview' }, 
-                  email.preview.substring(0, 120) + (email.preview.length > 120 ? '...' : '')
-                ),
-                React.createElement('span', {
-                  key: 'priority',
-                  className: `email-priority priority-${email.priority}`
-                }, `${email.priority} priority`)
-              ])
+          ),
+          React.createElement('div', { className: 'status-info' },
+            React.createElement('span', { className: 'text-muted' }, 
+              `Backend ${connectionStatus}`
             )
           )
-        ]);
+        );
       };
 
-      const renderEmailDetail = () => {
-        if (!selectedEmail) {
-          return React.createElement('div', { className: 'email-panel' }, [
-            React.createElement('div', { key: 'empty', className: 'email-detail-empty' }, [
-              React.createElement('div', { key: 'icon', className: 'empty-icon' }, 
-                React.createElement('svg', { width: 48, height: 48, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2 }, [
-                  React.createElement('path', { key: 'path', d: 'M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z' }),
-                  React.createElement('polyline', { key: 'polyline', points: '22,6 12,13 2,6' })
-                ])
-              ),
-              React.createElement('h3', { key: 'title', className: 'empty-title' }, 'Smart Email Intelligence'),
-              React.createElement('p', { key: 'desc', className: 'empty-description' }, 
-                'Select an email to see AI-powered analysis and context-aware recommendations.'
+      return React.createElement('div', { className: 'app-layout' },
+        // Left icon panel
+        React.createElement('aside', { className: 'icon-sidebar' },
+          React.createElement('div', { className: 'icon-nav' },
+            React.createElement('button', {
+              className: `icon-btn ${activeSection === 'main' ? 'active' : ''}`,
+              onClick: () => setActiveSection('main'),
+              title: 'Main'
+            },
+              React.createElement('svg', { width: 24, height: 24, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2 },
+                React.createElement('path', { d: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' }),
+                React.createElement('polyline', { points: '9,22 9,12 15,12 15,22' })
               )
-            ])
-          ]);
-        }
-
-        const analysis = selectedEmail.analysis;
-        return React.createElement('div', { className: 'email-panel' }, [
-          React.createElement('div', { key: 'header', className: 'panel-header' }, [
-            React.createElement('h2', { key: 'title', className: 'panel-title' }, selectedEmail.subject),
-            React.createElement('p', { key: 'subtitle', className: 'panel-subtitle' }, 
-              `From: ${selectedEmail.sender} • ${formatTime(selectedEmail.received_at)}`
+            ),
+            React.createElement('button', {
+              className: `icon-btn ${activeSection === 'emails' ? 'active' : ''}`,
+              onClick: () => setActiveSection('emails'),
+              title: 'Emails'
+            },
+              React.createElement('svg', { width: 24, height: 24, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2 },
+                React.createElement('path', { d: 'M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z' }),
+                React.createElement('polyline', { points: '22,6 12,13 2,6' })
+              )
             )
-          ]),
-          React.createElement('div', { key: 'content', style: { flex: 1, overflow: 'auto' } }, [
-            React.createElement('div', { key: 'preview', style: { marginBottom: '24px', padding: '16px', background: 'var(--bg-tertiary)', borderRadius: '8px' } }, [
-              React.createElement('h4', { key: 'title', style: { margin: '0 0 8px 0', color: 'var(--text-primary)' } }, 'Email Content'),
-              React.createElement('p', { key: 'content', style: { margin: '0', color: 'var(--text-secondary)', lineHeight: '1.5' } }, selectedEmail.preview)
-            ]),
-            React.createElement('div', { key: 'analysis', style: { marginBottom: '24px' } }, [
-              React.createElement('h4', { key: 'title', style: { margin: '0 0 12px 0', color: 'var(--text-primary)' } }, 'AI Analysis'),
-              React.createElement('div', { key: 'points', style: { marginBottom: '16px' } }, [
-                React.createElement('h5', { key: 'title', style: { margin: '0 0 8px 0', fontSize: '14px', color: 'var(--text-secondary)' } }, 'Key Points:'),
-                React.createElement('ul', { key: 'list', style: { margin: '0', paddingLeft: '20px', color: 'var(--text-primary)' } },
-                  analysis.key_points.map((point, idx) =>
-                    React.createElement('li', { key: idx, style: { marginBottom: '4px' } }, point)
+          )
+        ),
+        
+        // Chatbox panel (moved to center)
+        React.createElement('aside', { className: 'chatbox-panel' },
+          React.createElement('div', { className: 'chatbox' },
+            // Header
+            React.createElement('div', { className: 'chatbox-header' },
+              React.createElement('h3', { className: 'font-semibold' }, 'Chief of Staff'),
+              React.createElement('div', { className: 'connection-indicator' },
+                React.createElement('div', {
+                  className: `connection-dot ${connectionStatus}`,
+                  title: `Backend ${connectionStatus}`
+                }),
+                React.createElement('span', { className: 'text-sm text-muted' }, connectionStatus)
+              )
+            ),
+            
+            // Messages area
+            React.createElement('div', { className: 'messages-area' },
+              messages.length === 0 ? (
+                React.createElement('div', { className: 'welcome-message' },
+                  React.createElement('div', { className: 'welcome-icon' }, '📋'),
+                  React.createElement('h4', { className: 'font-medium mb-2' }, 'Welcome to Chief of Staff'),
+                  React.createElement('p', { className: 'text-sm text-muted mb-4' }, 
+                    'Your intelligent productivity assistant. I can help you plan your day, organize your emails, manage projects, and much more. Just ask me anything!'
+                  ),
+                  React.createElement('div', { className: 'quick-commands' },
+                    ['Help me plan my day', 'What\'s in my inbox?', 'Show me my current projects'].map(suggestion =>
+                      React.createElement('button', {
+                        key: suggestion,
+                        className: 'quick-cmd-btn',
+                        onClick: () => setInputText(suggestion)
+                      }, suggestion)
+                    )
                   )
                 )
-              ]),
-              React.createElement('div', { key: 'meta', style: { display: 'flex', gap: '16px', fontSize: '14px' } }, [
-                React.createElement('span', { key: 'tone', style: { color: 'var(--text-secondary)' } }, `Tone: ${analysis.tone}`),
-                React.createElement('span', { key: 'urgency', style: { color: 'var(--text-secondary)' } }, `Urgency: ${analysis.urgency_level}`),
-                React.createElement('span', { key: 'action', style: { color: analysis.requires_action ? 'var(--warning)' : 'var(--success)' } }, 
-                  analysis.requires_action ? 'Action Required' : 'No Action Needed'
+              ) : (
+                messages.map((msg, idx) =>
+                  React.createElement('div', { 
+                    key: idx, 
+                    className: `message ${msg.role} ${msg.isTyping ? 'typing' : ''}`
+                  },
+                    msg.role === 'agent' 
+                      ? React.createElement(FormattedText, { text: msg.content, className: 'message-content' })
+                      : React.createElement('div', { className: 'message-content' }, msg.content),
+                    msg.timestamp && React.createElement('div', { className: 'message-time' }, msg.timestamp)
+                  )
                 )
-              ])
-            ]),
-            React.createElement('div', { key: 'recommendations' }, [
-              React.createElement('h4', { key: 'title', style: { margin: '0 0 12px 0', color: 'var(--text-primary)' } }, 'Recommended Actions'),
-              React.createElement('div', { key: 'actions', style: { display: 'flex', flexDirection: 'column', gap: '8px' } },
-                analysis.recommendations.map((rec, idx) =>
-                  React.createElement('button', {
-                    key: idx,
-                    style: {
-                      padding: '12px 16px',
-                      background: 'var(--bg-tertiary)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '8px',
-                      color: 'var(--text-primary)',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      transition: 'all 0.2s ease'
-                    },
-                    onMouseEnter: (e) => {
-                      e.target.style.background = 'var(--surface-hover)';
-                      e.target.style.borderColor = 'var(--brand-primary)';
-                    },
-                    onMouseLeave: (e) => {
-                      e.target.style.background = 'var(--bg-tertiary)';
-                      e.target.style.borderColor = 'var(--border)';
-                    },
-                    onClick: () => {
-                      alert(`Action: ${rec.action}\nRationale: ${rec.rationale}\nConfidence: ${Math.round(rec.confidence * 100)}%`);
-                    }
-                  }, [
-                    React.createElement('div', { key: 'action', style: { fontWeight: '500', marginBottom: '4px', textTransform: 'capitalize' } }, 
-                      rec.action.replace('_', ' ')
-                    ),
-                    React.createElement('div', { key: 'rationale', style: { fontSize: '13px', color: 'var(--text-secondary)' } }, rec.rationale),
-                    React.createElement('div', { key: 'confidence', style: { fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' } }, 
-                      `Confidence: ${Math.round(rec.confidence * 100)}%`
-                    )
-                  ])
+              ),
+              React.createElement('div', { ref: messagesEndRef })
+            ),
+            
+            // Input area
+            React.createElement('div', { className: 'input-area' },
+              React.createElement('div', { className: 'input-wrapper' },
+                React.createElement('input', {
+                  className: 'chat-input',
+                  placeholder: 'What can I help you with today?',
+                  value: inputText,
+                  onChange: (e) => setInputText(e.target.value),
+                  onKeyPress: handleKeyPress,
+                  disabled: connectionStatus !== 'connected'
+                }),
+                React.createElement('button', {
+                  className: 'send-btn',
+                  onClick: sendMessage,
+                  disabled: !inputText.trim() || connectionStatus !== 'connected'
+                },
+                  React.createElement('svg', { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2 },
+                    React.createElement('line', { x1: 22, y1: 2, x2: 11, y2: 13 }),
+                    React.createElement('polygon', { points: '22,2 15,22 11,13 2,9 22,2' })
+                  )
                 )
               )
-            ])
-          ])
-        ]);
-      };
-
-      const renderMainContent = () => {
-        if (activeRoute === 'emails') {
-          return React.createElement('div', { key: 'emails', className: 'email-management' }, [
-            React.createElement('div', { key: 'email-list-container' }, renderEmailList()),
-            React.createElement('div', { key: 'email-detail-container' }, renderEmailDetail())
-          ]);
-        } else {
-          // For other routes, show placeholder content
-          return React.createElement('div', {
-            key: 'placeholder',
-            style: {
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '100%',
-              textAlign: 'center'
-            }
-          }, [
-            React.createElement('div', { key: 'content' }, [
-              React.createElement('h2', {
-                key: 'title',
-                style: {
-                  margin: '0 0 16px 0',
-                  color: 'var(--text-primary)',
-                  fontSize: '24px'
-                }
-              }, activeRoute === 'inbox' ? 'Chat with Chief of Staff' : 
-                  activeRoute === 'projects' ? 'Project Dashboard' :
-                  activeRoute === 'profile' ? 'Profile Setup' :
-                  activeRoute === 'contacts' ? 'Network Management' : 'Dashboard'),
-              React.createElement('p', {
-                key: 'desc',
-                style: {
-                  margin: '0',
-                  color: 'var(--text-muted)'
-                }
-              }, activeRoute === 'inbox' ? 'Use the chat panel on the left to interact with your AI assistant.' :
-                  'This feature is coming soon...')
-            ])
-          ]);
-        }
-      };
-
-      console.log('Rendering main app...');
-      return React.createElement('div', { className: 'app-layout' }, [
-        React.cloneElement(renderIconSidebar(), { key: 'icon-sidebar' }),
-        React.cloneElement(renderChatSidebar(), { key: 'chat-sidebar' }),
-        React.createElement('main', { key: 'main', className: 'main-content' }, [
-          React.createElement('div', { key: 'content', className: 'content-area' }, [
-            React.cloneElement(renderMainContent(), { key: 'main-content' })
-          ])
-        ]),
-        React.cloneElement(renderStatusBar(), { key: 'status-bar' })
-      ]);
+            )
+          )
+        ),
+        
+        // Main content area (moved to right)
+        React.createElement('main', { className: 'main-area' },
+          React.createElement('div', { className: 'main-content' },
+            React.createElement('div', { className: 'placeholder-content' },
+              React.createElement('h2', { className: 'text-2xl font-semibold text-muted mb-4' },
+                activeSection === 'main' ? 'Main Dashboard' : 'Email Management'
+              ),
+              React.createElement('p', { className: 'text-muted' },
+                'This area is reserved for future content.'
+              )
+            )
+          )
+        ),
+        
+        // Status bar at bottom
+        React.createElement(StatusBar)
+      );
     }
 
-    // Initialize the app
-    function initializeApp() {
-      const root = ReactDOM.createRoot(document.getElementById('root'));
-      root.render(React.createElement(ChiefOfStaffApp));
-    }
-
-    // Initialize when DOM is loaded
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', initializeApp);
-    } else {
-      initializeApp();
-    }
+    // Render the app
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(App));
   </script>
 </body>
 </html>

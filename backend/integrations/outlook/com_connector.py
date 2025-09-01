@@ -228,18 +228,6 @@ class OutlookCOMConnector:
             return None
     
     def _extract_message_data(self, item) -> Optional[Dict[str, Any]]:
-        """Extract message data using standardized email schema"""
-        from schemas.email_schema import create_email_from_com, email_to_dict
-        
-        try:
-            email_schema = create_email_from_com(item)
-            return email_to_dict(email_schema)
-        except Exception as e:
-            logger.error(f"Failed to extract email using schema: {e}")
-            # Fallback to original extraction
-            return self._extract_message_data_legacy(item)
-    
-    def _extract_message_data_legacy(self, item) -> Optional[Dict[str, Any]]:
         """Extract message data from COM item"""
         try:
             # Get sender info
