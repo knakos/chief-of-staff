@@ -120,3 +120,25 @@ def email_to_dict(email_schema: EmailSchema) -> Dict[str, Any]:
         "conversation_id": email_schema.conversation_id,
         "size": email_schema.size
     }
+
+
+def validate_email_schema(email_data: Dict[str, Any]) -> bool:
+    """Validate email data against schema requirements"""
+    try:
+        # Check required fields
+        required_fields = ["id", "subject", "sender"]
+        for field in required_fields:
+            if field not in email_data:
+                return False
+        
+        # Basic type validation
+        if not isinstance(email_data.get("id"), str):
+            return False
+        if not isinstance(email_data.get("subject"), str):
+            return False
+        if not isinstance(email_data.get("sender"), str):
+            return False
+            
+        return True
+    except Exception:
+        return False

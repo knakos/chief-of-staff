@@ -30,7 +30,16 @@
       "Read(/mnt/c/Users/knako/OneDrive/**)",
       "Bash(cd:*)",
       "Bash(/bashes)",
-      "Bash(cat:*)"
+      "Bash(curl:*)",
+      "Bash(ss:*)",
+      "Bash(pkill:*)",
+      "Bash(git gc:*)",
+      "Bash(git fsck:*)",
+      "Bash(git reset:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git clean:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []
