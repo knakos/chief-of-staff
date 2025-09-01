@@ -29,7 +29,16 @@
       "Read(/mnt/c/Users/knako/OneDrive/PYTHON PROJECTS/CHIEF OF STAFF/backend/**)",
       "Read(/mnt/c/Users/knako/OneDrive/**)",
       "Bash(cd:*)",
-      "Bash(/bashes)"
+      "Bash(/bashes)",
+      "Bash(curl:*)",
+      "Bash(ss:*)",
+      "Bash(pkill:*)",
+      "Bash(git gc:*)",
+      "Bash(git fsck:*)",
+      "Bash(git reset:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git clean:*)"
     ],
     "deny": [],
     "ask": []

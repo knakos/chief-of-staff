@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from .connector import GraphAPIConnector
 from .auth import OutlookAuthManager
-from models import Email
+# Email model removed - sync functionality no longer needed
 
 logger = logging.getLogger(__name__)
 
