@@ -17,13 +17,13 @@ from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import StaticPool
 from pydantic import BaseModel
 
-from models import Base, Project, Task, Email, ContextEntry, Job, Interview, Digest
+from models import Base, Area, Project, Task, ContextEntry, Job, Interview, Digest
 from job_queue import JobQueue
 from claude_client import ClaudeClient
 from agents import COSOrchestrator
 
 # Logging setup
-logging.basicConfig(level=logging.WARNING)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Load environment variables explicitly
@@ -95,6 +95,13 @@ async def lifespan(app: FastAPI):
     await job_queue.start()
     logger.info("Job queue started")
     
+    # Auto-connect to Outlook
+    try:
+        connection_result = await cos_orchestrator.email_triage.hybrid_service.connect()
+        logger.info(f"Outlook auto-connection: {connection_result}")
+    except Exception as e:
+        logger.warning(f"Failed to auto-connect to Outlook: {e}")
+    
     yield
     
     # Cleanup
@@ -148,7 +155,7 @@ class ConnectionManager:
         if not self.active_connections:
             return
             
-        message_text = json.dumps({"event": event, "data": data})
+        message_text = json.dumps({"event": event, "data": data}, default=str)
         disconnected_ids = []
         
         # Use asyncio.gather for concurrent sending
@@ -179,9 +186,15 @@ class ConnectionManager:
         """Send message to specific client"""
         message = {"event": event, "data": data}
         try:
-            await websocket.send_text(json.dumps(message))
+            await websocket.send_text(json.dumps(message, default=str))
         except Exception as e:
             logger.error(f"Error sending to specific WebSocket: {e}")
+            # Try with simplified error response
+            try:
+                error_message = {"event": "error", "data": {"message": str(e)}}
+                await websocket.send_text(json.dumps(error_message, default=str))
+            except:
+                pass  # If even error sending fails, give up gracefully
 
 manager = ConnectionManager()
 
@@ -199,7 +212,12 @@ class WSMessageHandler:
             "interview:answer": self.handle_interview_answer,
             "interview:dismiss": self.handle_interview_dismiss,
             "project:create": self.handle_project_create,
+            "project:load_dashboard": self.handle_load_dashboard,
+            "project:insight_action": self.handle_insight_action,
             "task:create": self.handle_task_create,
+            "task:update": self.handle_task_update,
+            "email:analyze": self.handle_email_analyze,
+            "email:get_recent": self.handle_get_recent_emails,
             "status:request": self.handle_status_request,
         }
         
@@ -247,27 +265,65 @@ class WSMessageHandler:
 
     async def handle_email_action(self, data: Dict[str, Any]):
         """Handle email action application"""
-        thread_id = data.get("thread_id")
+        email_id = data.get("email_id")  # Changed from thread_id to email_id
         action = data.get("action")
         payload = data.get("payload")
         
-        if not thread_id or not action:
+        if not email_id or not action:
+            await manager.send_to_client(
+                self.websocket,
+                "email:action_error",
+                {"message": "Email ID and action required"}
+            )
             return
         
-        # Find email by thread_id
-        email = self.db.query(Email).filter(Email.thread_id == thread_id).first()
-        if not email:
-            return
-        
-        # Process action through COS orchestrator
-        result = await cos_orchestrator.apply_email_action(email, action, payload, self.db)
-        
-        # Send result back
-        await manager.send_to_client(
-            self.websocket,
-            "email:action_applied",
-            {"thread_id": thread_id, "action": action, "result": result}
-        )
+        try:
+            # Get email directly from Outlook using hybrid service
+            hybrid_service = cos_orchestrator.email_triage.hybrid_service
+            email_schema = await hybrid_service.load_email_with_cos_data(email_id)
+            
+            if not email_schema:
+                await manager.send_to_client(
+                    self.websocket,
+                    "email:action_error",
+                    {"message": "Email not found in Outlook"}
+                )
+                return
+            
+            # Apply action based on type
+            result = {"success": False, "message": "Unknown action"}
+            
+            if action == "move_to_folder":
+                folder_name = payload.get("folder_name")
+                if folder_name:
+                    success = await hybrid_service.move_email(email_id, folder_name)
+                    result = {"success": success, "message": f"Email {'moved to' if success else 'failed to move to'} {folder_name}"}
+            
+            elif action == "mark_read":
+                # This would require implementing mark_read in hybrid service
+                result = {"success": True, "message": "Action noted (implementation pending)"}
+            
+            elif action == "extract_tasks":
+                # Extract tasks and potentially create them in the system
+                if email_schema.analysis and email_schema.analysis.extracted_tasks:
+                    result = {"success": True, "tasks": email_schema.analysis.extracted_tasks, "message": "Tasks extracted"}
+                else:
+                    result = {"success": False, "message": "No tasks found to extract"}
+            
+            # Send result back
+            await manager.send_to_client(
+                self.websocket,
+                "email:action_applied",
+                {"email_id": email_id, "action": action, "result": result}
+            )
+            
+        except Exception as e:
+            logger.error(f"Error applying email action: {e}")
+            await manager.send_to_client(
+                self.websocket,
+                "email:action_error", 
+                {"message": f"Action failed: {str(e)}"}
+            )
 
     async def handle_interview_answer(self, data: Dict[str, Any]):
         """Handle interview question answer"""
@@ -417,16 +473,299 @@ class WSMessageHandler:
         except Exception as e:
             logger.error(f"Error handling status request: {e}")
 
+    async def handle_load_dashboard(self, data: Dict[str, Any]):
+        """Load project dashboard data"""
+        try:
+            from models import Area, Project, Task
+            
+            # Load areas with project counts
+            areas = []
+            for area in self.db.query(Area).order_by(Area.sort_order).all():
+                project_count = self.db.query(Project).filter_by(area_id=area.id).count()
+                active_task_count = self.db.query(Task).join(Project).filter(
+                    Project.area_id == area.id,
+                    Task.status.in_(['pending', 'in_progress'])
+                ).count()
+                
+                areas.append({
+                    "id": area.id,
+                    "name": area.name,
+                    "description": area.description,
+                    "color": area.color,
+                    "is_system": area.is_system,
+                    "is_default": area.is_default,
+                    "sort_order": area.sort_order,
+                    "project_count": project_count,
+                    "active_tasks": active_task_count
+                })
+
+            # Load projects with task counts and health scores
+            projects = []
+            for project in self.db.query(Project).join(Area).order_by(Area.sort_order, Project.sort_order).all():
+                task_count = self.db.query(Task).filter_by(project_id=project.id).count()
+                completed_count = self.db.query(Task).filter_by(project_id=project.id, status='completed').count()
+                
+                # Simple health score calculation (completion rate + activity)
+                completion_rate = (completed_count / task_count * 100) if task_count > 0 else 100
+                health_score = int(completion_rate)  # Simplified for now
+                
+                # Get next due task
+                next_due_task = None
+                next_task = self.db.query(Task).filter_by(project_id=project.id)\
+                    .filter(Task.status.in_(['pending', 'in_progress']))\
+                    .filter(Task.due_date.isnot(None))\
+                    .order_by(Task.due_date).first()
+                
+                if next_task:
+                    next_due_task = {
+                        "id": next_task.id,
+                        "title": next_task.title,
+                        "due_date": next_task.due_date.isoformat() if next_task.due_date else None
+                    }
+
+                projects.append({
+                    "id": project.id,
+                    "name": project.name,
+                    "description": project.description,
+                    "area_id": project.area_id,
+                    "area_name": project.area.name,
+                    "status": project.status,
+                    "priority": project.priority,
+                    "is_catch_all": project.is_catch_all,
+                    "is_system": project.is_system,
+                    "color": project.color or project.area.color,
+                    "task_count": task_count,
+                    "completed_tasks": completed_count,
+                    "health_score": health_score,
+                    "next_due_task": next_due_task
+                })
+
+            # Load tasks
+            tasks = []
+            for task in self.db.query(Task).join(Project).join(Area).all():
+                tasks.append({
+                    "id": task.id,
+                    "title": task.title,
+                    "description": task.description,
+                    "status": task.status,
+                    "priority": task.priority,
+                    "due_date": task.due_date.isoformat() if task.due_date else None,
+                    "project_id": task.project_id,
+                    "project_name": task.project.name,
+                    "area_id": task.project.area_id,
+                    "area_name": task.project.area.name,
+                    "suggested_next": False  # TODO: Add AI suggestion logic
+                })
+
+            await manager.send_to_client(
+                self.websocket,
+                "project:data_update",
+                {
+                    "areas": areas,
+                    "projects": projects,
+                    "tasks": tasks
+                }
+            )
+            
+        except Exception as e:
+            logger.error(f"Error loading dashboard data: {e}")
+            await manager.send_to_client(
+                self.websocket,
+                "error",
+                {"message": f"Failed to load dashboard: {str(e)}"}
+            )
+
+    async def handle_task_update(self, data: Dict[str, Any]):
+        """Handle task status updates"""
+        task_id = data.get("task_id")
+        updates = {k: v for k, v in data.items() if k != "task_id"}
+        
+        if not task_id:
+            return
+
+        try:
+            task = self.db.query(Task).filter_by(id=task_id).first()
+            if not task:
+                return
+
+            # Apply updates
+            for key, value in updates.items():
+                if hasattr(task, key):
+                    setattr(task, key, value)
+
+            # Set completed_at if status changed to completed
+            if updates.get("status") == "completed" and task.completed_at is None:
+                task.completed_at = datetime.utcnow()
+            elif updates.get("status") != "completed":
+                task.completed_at = None
+
+            self.db.commit()
+
+            # Broadcast task status change
+            await manager.send_to_all(
+                "task:status_change",
+                {"task_id": task_id, "status": task.status}
+            )
+
+        except Exception as e:
+            logger.error(f"Error updating task {task_id}: {e}")
+            self.db.rollback()
+
+    async def handle_insight_action(self, data: Dict[str, Any]):
+        """Handle insight action execution"""
+        insight_id = data.get("insight_id")
+        action = data.get("action")
+        action_data = data.get("data", {})
+        
+        logger.info(f"Executing insight action: {action} for insight {insight_id}")
+        
+        # TODO: Implement actual insight action logic
+        # For now, just acknowledge the action
+        await manager.send_to_client(
+            self.websocket,
+            "insight:action_completed",
+            {"insight_id": insight_id, "action": action, "success": True}
+        )
+
+    async def handle_email_analyze(self, data: Dict[str, Any]):
+        """Handle email analysis request"""
+        try:
+            email_id = data.get("email_id")
+            if not email_id:
+                await manager.send_to_client(
+                    self.websocket,
+                    "email:analysis_error", 
+                    {"message": "Email ID required"}
+                )
+                return
+            
+            # Get email directly from Outlook using hybrid service
+            hybrid_service = cos_orchestrator.email_triage.hybrid_service
+            email_schema = await hybrid_service.load_email_with_cos_data(email_id)
+            
+            if not email_schema:
+                await manager.send_to_client(
+                    self.websocket,
+                    "email:analysis_error",
+                    {"message": "Email not found in Outlook"}
+                )
+                return
+            
+            # Analyze email with intelligence service
+            analysis = await cos_orchestrator.email_intelligence.analyze_email(email_schema, self.db)
+            
+            # Add analysis to email schema
+            email_schema.analysis = analysis
+            
+            # Sync COS analysis back to Outlook properties
+            try:
+                sync_success = await hybrid_service.sync_email_analysis_to_outlook(email_schema)
+                if sync_success:
+                    logger.info(f"Successfully synced analysis to Outlook for email: {email_schema.subject[:50]}")
+                else:
+                    logger.warning(f"Failed to sync analysis to Outlook for email: {email_schema.subject[:50]}")
+            except Exception as sync_e:
+                logger.error(f"Error syncing analysis to Outlook: {sync_e}")
+            
+            # Send analysis result
+            await manager.send_to_client(
+                self.websocket,
+                "email:analysis_result",
+                {"email_id": email_id, "analysis": analysis.model_dump()}
+            )
+            
+        except Exception as e:
+            logger.error(f"Error analyzing email: {e}")
+            await manager.send_to_client(
+                self.websocket,
+                "email:analysis_error",
+                {"message": f"Analysis failed: {str(e)}"}
+            )
+
+    async def handle_get_recent_emails(self, data: Dict[str, Any]):
+        """Handle request for recent emails - fetch only, no analysis"""
+        try:
+            limit = data.get("limit", 10)
+            logger.info(f"Getting recent emails with limit: {limit}")
+            
+            # Get recent emails directly from Outlook
+            hybrid_service = cos_orchestrator.email_triage.hybrid_service
+            logger.info(f"Hybrid service connection method: {hybrid_service._connection_method}")
+            logger.info(f"Hybrid service connected: {hybrid_service._connection_method is not None}")
+            
+            emails = await hybrid_service.get_messages("Inbox", limit=limit)
+            logger.info(f"Retrieved {len(emails) if emails else 0} emails from hybrid service")
+            
+            if emails:
+                from schemas.email_schema import EmailSchema, validate_email_schema
+                
+                # Convert to simple JSON-safe format
+                formatted_emails = []
+                for email_data in emails:
+                    try:
+                        # Create simple JSON-safe email object
+                        simple_email = {
+                            "id": email_data.get("id", "unknown"),
+                            "subject": email_data.get("subject", "No Subject"),
+                            "sender_name": email_data.get("sender_name", "Unknown Sender"),
+                            "sender_email": email_data.get("sender_email", ""),
+                            "body_preview": email_data.get("body_preview", ""),
+                            "received_at": str(email_data.get("received_at", "")),
+                            "is_read": email_data.get("is_read", False),
+                            "priority": "medium",
+                            "analysis": None
+                        }
+                        formatted_emails.append(simple_email)
+                        
+                    except Exception as e:
+                        logger.error(f"Failed to process email: {e}")
+                        continue
+                
+                logger.info(f"Sending {len(formatted_emails)} emails to frontend")
+                try:
+                    await manager.send_to_client(
+                        self.websocket,
+                        "email:recent_list",
+                        {"emails": formatted_emails}
+                    )
+                    logger.info("Email list sent successfully")
+                except Exception as e:
+                    logger.error(f"Failed to send email list: {e}")
+                    # Send empty list as fallback
+                    await manager.send_to_client(
+                        self.websocket,
+                        "email:recent_list",
+                        {"emails": [], "error": "Failed to serialize email data"}
+                    )
+            else:
+                await manager.send_to_client(
+                    self.websocket,
+                    "email:recent_list",
+                    {"emails": [], "message": "No recent emails found"}
+                )
+                
+        except Exception as e:
+            logger.error(f"Error getting recent emails: {e}")
+            await manager.send_to_client(
+                self.websocket,
+                "email:fetch_error",
+                {"message": f"Failed to get recent emails: {str(e)}"}
+            )
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db)):
     """Main WebSocket endpoint for real-time communication"""
+    logger.info("=== NEW WEBSOCKET CONNECTION ATTEMPT ===")
     connection_id = await manager.connect(websocket)
+    logger.info(f"WebSocket connected with ID: {connection_id}")
     handler = WSMessageHandler(websocket, db)
+    logger.info("WebSocket handler created successfully")
     
     try:
         while True:
             # Receive message
             data = await websocket.receive_text()
+            logger.info(f"Received WebSocket message: {data}")
             
             try:
                 message = json.loads(data)
