@@ -39,7 +39,8 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git clean:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(cd:*)"
     ],
     "deny": [],
     "ask": []
