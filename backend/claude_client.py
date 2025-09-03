@@ -13,6 +13,7 @@ import hashlib
 from datetime import datetime, timedelta
 import threading
 from anthropic import AsyncAnthropic
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,8 @@ class ClaudeClient:
     """Claude AI client with prompt management and rate limiting"""
     
     def __init__(self):
+        # Ensure .env file is loaded for API key
+        load_dotenv()
         self.api_key = os.getenv("ANTHROPIC_API_KEY")
         self.prompts_cache: Dict[str, str] = {}
         self.prompts_dir = Path(__file__).parent.parent / "llm" / "prompts"
@@ -327,12 +330,18 @@ As your Chief of Staff, I can assist with:
 What would you like to focus on first?"""
     
     def _mock_email_triage_response(self, context: Dict[str, Any]) -> str:
-        """Mock email triage response"""
-        return """Email triage completed. Recommended actions:
-- Move to COS_Actions folder
-- Tag with COS/Project-Alpha  
-- Priority: High
-- Suggested response: Schedule follow-up meeting"""
+        """Mock email triage response - returns JSON for email intelligence"""
+        return """{
+    "priority": "HIGH",
+    "tone": "PROFESSIONAL",
+    "urgency": "MEDIUM",
+    "summary": "Mock email analysis - development mode active",
+    "action_required": true,
+    "suggested_actions": ["Reply to request", "Schedule follow-up", "Add to project"],
+    "key_topics": ["project update", "deadline", "meeting"],
+    "confidence": 0.85,
+    "reasoning": "Mock analysis generated because ANTHROPIC_API_KEY is not set"
+}"""
     
     def _mock_summarizer_response(self, context: Dict[str, Any]) -> str:
         """Mock summarizer response"""
@@ -613,3 +622,7 @@ Consider scheduling focused time for Project Alpha client feedback review - it's
         }
         logger.info("Usage statistics reset")
         return {"status": "reset", "message": "All usage statistics have been reset"}
+    
+    async def get_usage_statistics(self) -> Dict[str, Any]:
+        """Async wrapper for get_usage_stats for compatibility"""
+        return self.get_usage_stats()

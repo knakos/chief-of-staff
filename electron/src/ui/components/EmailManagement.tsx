@@ -1,6 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import ErrorBoundary from './ErrorBoundary';
 
+// CSS-in-JS style for spinner animation
+const spinnerStyle = `
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+`;
+
+// Inject the CSS into the document head
+if (!document.querySelector('#email-spinner-styles')) {
+  const style = document.createElement('style');
+  style.id = 'email-spinner-styles';
+  style.textContent = spinnerStyle;
+  document.head.appendChild(style);
+}
+
 // Email Detail component for displaying selected email
 const EmailDetail: React.FC<{ email: any; onBack: () => void }> = ({ email, onBack }) => {
   return (
@@ -244,6 +260,8 @@ const SmartEmailList: React.FC = () => {
   const [selectedEmail, setSelectedEmail] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [connectionStatus, setConnectionStatus] = useState('connecting');
+  const [contextMenu, setContextMenu] = useState<{x: number, y: number, email: any} | null>(null);
+  const [analyzingEmails, setAnalyzingEmails] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const connectAndLoad = () => {
@@ -271,6 +289,40 @@ const SmartEmailList: React.FC = () => {
         if (message.event === "email:recent_list" && message.data?.emails) {
           setEmails(message.data.emails);
           setLoading(false);
+        }
+        
+        if (message.event === "email:analyzed") {
+          // Update the analyzed email in the list
+          const emailId = message.data?.email_id;
+          const emailData = message.data?.email_data;
+          if (emailId && emailData) {
+            setEmails(prev => prev.map(email => 
+              email.id === emailId ? emailData : email
+            ));
+            // Remove from analyzing set
+            setAnalyzingEmails(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(emailId);
+              return newSet;
+            });
+            // Update selected email if it's the one being viewed
+            if (selectedEmail?.id === emailId) {
+              setSelectedEmail(emailData);
+            }
+          }
+        }
+        
+        if (message.event === "email:analysis_error") {
+          // Remove from analyzing set on error
+          const emailId = message.data?.email_id;
+          if (emailId) {
+            setAnalyzingEmails(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(emailId);
+              return newSet;
+            });
+          }
+          console.error('Email analysis failed:', message.data?.message);
         }
         
         if (message.event === "connection_status") {
@@ -305,6 +357,51 @@ const SmartEmailList: React.FC = () => {
   const handleBackToList = () => {
     setSelectedEmail(null);
   };
+
+  const handleRightClick = (event: React.MouseEvent, email: any) => {
+    event.preventDefault();
+    setContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      email: email
+    });
+  };
+
+  const handleAnalyzeEmail = (email: any) => {
+    if (analyzingEmails.has(email.id)) {
+      return; // Already analyzing
+    }
+    
+    // Add to analyzing set
+    setAnalyzingEmails(prev => new Set(prev).add(email.id));
+    
+    // Send analysis request
+    const ws = (window as any).ws;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        event: "email:analyze",
+        data: { email_id: email.id }
+      }));
+    }
+    
+    setContextMenu(null);
+  };
+
+  const closeContextMenu = () => {
+    setContextMenu(null);
+  };
+
+  // Close context menu on clicks outside
+  useEffect(() => {
+    const handleClickOutside = () => {
+      if (contextMenu) {
+        setContextMenu(null);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [contextMenu]);
 
   // Show email detail if one is selected
   if (selectedEmail) {
@@ -370,11 +467,13 @@ const SmartEmailList: React.FC = () => {
             <div
               key={email.id || index}
               onClick={() => handleEmailSelect(email)}
+              onContextMenu={(e) => handleRightClick(e, email)}
               style={{
                 padding: '16px',
                 borderBottom: index < emails.length - 1 ? '1px solid #f3f4f6' : 'none',
                 cursor: 'pointer',
-                transition: 'background-color 0.2s'
+                transition: 'background-color 0.2s',
+                position: 'relative'
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.backgroundColor = '#f9fafb';
@@ -416,7 +515,59 @@ const SmartEmailList: React.FC = () => {
                 <span>
                   {email.received_at ? new Date(email.received_at).toLocaleDateString() : 'Unknown date'}
                 </span>
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                  {/* Analyzing indicator */}
+                  {analyzingEmails.has(email.id) && (
+                    <span style={{ 
+                      backgroundColor: '#fef3c7', 
+                      color: '#d97706', 
+                      padding: '2px 6px', 
+                      borderRadius: '4px', 
+                      fontSize: '11px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}>
+                      <span style={{ 
+                        width: '8px', 
+                        height: '8px', 
+                        border: '1px solid #d97706', 
+                        borderTop: '1px solid transparent', 
+                        borderRadius: '50%', 
+                        animation: 'spin 1s linear infinite' 
+                      }}></span>
+                      Analyzing...
+                    </span>
+                  )}
+                  
+                  {/* Analyze button for emails without analysis */}
+                  {!analyzingEmails.has(email.id) && !email.analysis?.priority && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleAnalyzeEmail(email);
+                      }}
+                      style={{
+                        backgroundColor: '#f0f9ff',
+                        color: '#0369a1',
+                        border: '1px solid #bae6fd',
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        fontSize: '11px',
+                        cursor: 'pointer',
+                        transition: 'background-color 0.2s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#e0f2fe';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = '#f0f9ff';
+                      }}
+                    >
+                      🤖 Analyze
+                    </button>
+                  )}
+
                   {email.has_attachments && (
                     <span style={{ backgroundColor: '#ddd6fe', color: '#7c3aed', padding: '2px 6px', borderRadius: '4px', fontSize: '11px' }}>
                       📎
@@ -493,6 +644,67 @@ const SmartEmailList: React.FC = () => {
           </div>
         )}
       </div>
+      
+      {/* Context Menu */}
+      {contextMenu && (
+        <div
+          style={{
+            position: 'fixed',
+            top: contextMenu.y,
+            left: contextMenu.x,
+            backgroundColor: 'white',
+            border: '1px solid #e5e7eb',
+            borderRadius: '6px',
+            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+            zIndex: 1000,
+            minWidth: '160px',
+            overflow: 'hidden'
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div
+            onClick={() => {
+              handleEmailSelect(contextMenu.email);
+              closeContextMenu();
+            }}
+            style={{
+              padding: '8px 12px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              color: '#374151',
+              transition: 'background-color 0.15s',
+              borderBottom: '1px solid #f3f4f6'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#f9fafb';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'white';
+            }}
+          >
+            📄 View Details
+          </div>
+          
+          <div
+            onClick={() => handleAnalyzeEmail(contextMenu.email)}
+            style={{
+              padding: '8px 12px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              color: '#374151',
+              transition: 'background-color 0.15s'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#f9fafb';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'white';
+            }}
+          >
+            🤖 Analyze with AI
+          </div>
+        </div>
+      )}
     </div>
   );
 };

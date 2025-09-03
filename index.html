@@ -907,9 +907,12 @@
           };
           setMessages(prev => [...prev, loadingMessage]);
           
+          // Clear emails list for gradual loading
+          setEmails([]);
+          
           ws.send(JSON.stringify({
             event: 'email:get_recent',
-            data: { limit: 50 }
+            data: { limit: 50, batch_size: 10 }
           }));
         };
         
@@ -940,6 +943,85 @@
               // Handle email list updates
               if (message.data && message.data.emails) {
                 setEmails(message.data.emails);
+              }
+            } else if (message.event === 'email:load_progress') {
+              // Handle loading progress updates
+              console.log('Loading progress:', message.data);
+              if (message.data) {
+                const { status, current, total, message: progressMessage } = message.data;
+                
+                if (status === 'loading') {
+                  // Update or add loading message
+                  setMessages(prev => {
+                    // Remove any existing loading messages
+                    const filtered = prev.filter(msg => msg.type !== 'email_loading' && msg.type !== 'email_progress');
+                    
+                    // Add updated progress message
+                    const progressMsg = {
+                      id: 'email_progress_' + Date.now(),
+                      text: progressMessage || `Loading ${current}/${total} emails...`,
+                      timestamp: new Date().toISOString(),
+                      sender: 'system',
+                      type: 'email_progress'
+                    };
+                    
+                    return [...filtered, progressMsg];
+                  });
+                } else if (status === 'completed') {
+                  // Remove loading messages when completed
+                  setEmailsLoading(false);
+                  setMessages(prev => prev.filter(msg => msg.type !== 'email_loading' && msg.type !== 'email_progress'));
+                  
+                  // Add completion message
+                  const completionMessage = {
+                    id: Date.now() + '_completed',
+                    text: progressMessage || `✅ Loaded all ${total} emails successfully`,
+                    timestamp: new Date().toISOString(),
+                    sender: 'system'
+                  };
+                  setMessages(prev => [...prev, completionMessage]);
+                }
+              }
+            } else if (message.event === 'email:batch_loaded') {
+              // Handle batched email loading
+              console.log('Email batch loaded:', message.data);
+              if (message.data && message.data.emails) {
+                const batchEmails = message.data.emails;
+                const { batch_start, is_final } = message.data;
+                
+                console.log(`📧 Processing batch ${batch_start}-${batch_start + batchEmails.length}, final: ${is_final}`);
+                
+                // Transform the batch emails to match our UI format
+                const transformedBatch = batchEmails.map(item => {
+                  const hasAnalysis = item.analysis && Object.keys(item.analysis).length > 0;
+                  
+                  const email = {
+                    id: item.id,
+                    subject: item.subject || 'No Subject',
+                    sender: item.sender_name || item.sender_email,
+                    preview: item.body_preview || 'No preview available',
+                    received_at: item.received_at,
+                    priority: hasAnalysis && item.analysis.priority ? item.analysis.priority : 'Unassessed',
+                    tone: hasAnalysis && item.analysis.tone ? item.analysis.tone : 'Unassessed', 
+                    urgency: hasAnalysis && item.analysis.urgency ? item.analysis.urgency : 'Unassessed',
+                    recommendations: item.analysis?.recommendations || [],
+                    to_recipients: item.to_recipients || [],
+                    cc_recipients: item.cc_recipients || [],
+                    bcc_recipients: item.bcc_recipients || [],
+                    sender_name: item.sender_name,
+                    sender_email: item.sender_email,
+                    body_content: item.body_content || '',
+                    body_preview: item.body_preview || '',
+                    analysis: item.analysis
+                  };
+                  
+                  return email;
+                });
+                
+                // Add batch emails to existing list (append mode)
+                setEmails(prev => [...prev, ...transformedBatch]);
+                
+                console.log(`📧 Added batch of ${transformedBatch.length} emails (total now: ${emails.length + transformedBatch.length})`);
               }
             } else if (message.event === 'email:recent_list') {
               // Handle recent emails with analysis
@@ -1013,52 +1095,6 @@
               } else {
                 console.log('No email data in response:', message);
               }
-            } else if (message.event === 'email:analyzed') {
-              // Handle fresh email analysis result
-              console.log('🔄 Received email:analyzed event:', message);
-              
-              const emailId = message.data.email_id;
-              const newAnalysis = message.data.analysis;
-              
-              if (emailId && newAnalysis) {
-                // Update the emails list with fresh analysis
-                setEmails(prevEmails => prevEmails.map(email => {
-                  if (email.id === emailId) {
-                    console.log('📧 Updating email analysis:', emailId, newAnalysis);
-                    return {
-                      ...email,
-                      priority: newAnalysis.priority || 'Unassessed',
-                      tone: newAnalysis.tone || 'Unassessed',
-                      urgency: newAnalysis.urgency || 'Unassessed',
-                      recommendations: newAnalysis.recommendations || [],
-                      analysis: newAnalysis
-                    };
-                  }
-                  return email;
-                }));
-                
-                // If this is the currently selected email, update selection to refresh summary panel
-                if (selectedEmail && selectedEmail.id === emailId) {
-                  setSelectedEmail(prevSelected => ({
-                    ...prevSelected,
-                    priority: newAnalysis.priority || 'Unassessed',
-                    tone: newAnalysis.tone || 'Unassessed',
-                    urgency: newAnalysis.urgency || 'Unassessed',
-                    recommendations: newAnalysis.recommendations || [],
-                    analysis: newAnalysis
-                  }));
-                  console.log('📊 Updated selected email analysis for summary panel refresh');
-                }
-                
-                // Add success notification to chat
-                const analysisMessage = {
-                  id: Date.now() + '_analysis',
-                  text: `🔄 Analysis updated for: "${emails.find(e => e.id === emailId)?.subject?.substring(0, 50) || 'Email'}" - Priority: ${newAnalysis.priority}, Tone: ${newAnalysis.tone}, Urgency: ${newAnalysis.urgency}`,
-                  timestamp: new Date().toISOString(),
-                  sender: 'system'
-                };
-                setMessages(prev => [...prev, analysisMessage]);
-              }
             } else if (message.event === 'status:outlook' || message.event === 'outlook:connected') {
               // Handle outlook status updates
               if (message.data && message.data.status) {
@@ -1084,6 +1120,7 @@
                   priority: analysis.priority || 'Unassessed',
                   tone: analysis.tone || 'Unassessed', 
                   urgency: analysis.urgency || 'Unassessed',
+                  recommendations: analysis.suggested_actions || analysis.recommendations || [],
                   isProcessing: false
                 };
                 
@@ -1094,19 +1131,87 @@
                   full_analysis_update: analysisUpdate
                 });
                 
-                // Update the selected email with analysis results
-                if (selectedEmail && selectedEmail.id === message.data.email_id) {
-                  const updatedEmail = {
-                    ...selectedEmail,
-                    ...analysisUpdate
-                  };
-                  console.log('🔄 UPDATING SELECTED EMAIL:', {
-                    before_analysis: selectedEmail.analysis?.summary,
-                    after_analysis: updatedEmail.analysis?.summary,
-                    analysis_object_keys: updatedEmail.analysis ? Object.keys(updatedEmail.analysis) : 'no analysis'
+                // Debug ID matching
+                console.log('🔍 ID MATCHING DEBUG:', {
+                  selectedEmail_exists: !!selectedEmail,
+                  selectedEmail_id: selectedEmail?.id,
+                  analyzed_email_id: message.data.email_id,
+                  ids_match: selectedEmail?.id === message.data.email_id,
+                  selectedEmail_id_length: selectedEmail?.id?.length,
+                  analyzed_email_id_length: message.data.email_id?.length
+                });
+                
+                // Update the selected email with analysis results using functional updates
+                setSelectedEmail(currentSelectedEmail => {
+                  console.log('🔄 FUNCTIONAL UPDATE - Current selectedEmail:', {
+                    exists: !!currentSelectedEmail,
+                    id: currentSelectedEmail?.id,
+                    subject: currentSelectedEmail?.subject?.substring(0, 50)
                   });
-                  setSelectedEmail(updatedEmail);
-                }
+                  
+                  if (currentSelectedEmail && currentSelectedEmail.id === message.data.email_id) {
+                    const updatedEmail = {
+                      ...currentSelectedEmail,
+                      ...analysisUpdate
+                    };
+                    console.log('🔄 UPDATING SELECTED EMAIL (DIRECT MATCH):', {
+                      before_analysis: currentSelectedEmail.analysis?.summary?.substring(0, 50),
+                      after_analysis: updatedEmail.analysis?.summary?.substring(0, 50),
+                      analysis_object_keys: updatedEmail.analysis ? Object.keys(updatedEmail.analysis) : 'no analysis'
+                    });
+                    return updatedEmail;
+                  } else if (currentSelectedEmail) {
+                    // Fallback: Try to find the analyzed email in the emails list and check if it matches by subject/content
+                    const analyzedEmailFromList = emails.find(e => e.id === message.data.email_id);
+                    if (analyzedEmailFromList && 
+                        (analyzedEmailFromList.subject === currentSelectedEmail.subject || 
+                         analyzedEmailFromList.sender === currentSelectedEmail.sender)) {
+                      console.log('🔄 UPDATING SELECTED EMAIL (FALLBACK MATCH):', {
+                        reason: 'ID mismatch but subject/sender match',
+                        selected_id: currentSelectedEmail.id,
+                        analyzed_id: message.data.email_id,
+                        subject_match: analyzedEmailFromList.subject === currentSelectedEmail.subject
+                      });
+                      const updatedEmail = {
+                        ...currentSelectedEmail,
+                        ...analysisUpdate,
+                        id: message.data.email_id // Update with correct ID
+                      };
+                      return updatedEmail;
+                    } else {
+                      console.log('❌ SELECTED EMAIL NOT UPDATED (FALLBACK FAILED):', {
+                        reason: 'No subject/sender match',
+                        selected_id: currentSelectedEmail?.id,
+                        analyzed_id: message.data.email_id,
+                        selected_subject: currentSelectedEmail?.subject?.substring(0, 30),
+                        analyzed_email_found: !!analyzedEmailFromList,
+                        analyzed_subject: analyzedEmailFromList?.subject?.substring(0, 30)
+                      });
+                      return currentSelectedEmail; // No change
+                    }
+                  } else {
+                    // No selected email at all - try to find and select the analyzed email
+                    const analyzedEmailFromList = emails.find(e => e.id === message.data.email_id);
+                    if (analyzedEmailFromList) {
+                      console.log('🔄 SELECTING ANALYZED EMAIL (NO SELECTION):', {
+                        reason: 'No email selected, selecting the analyzed one',
+                        analyzed_id: message.data.email_id,
+                        analyzed_subject: analyzedEmailFromList.subject?.substring(0, 50)
+                      });
+                      return {
+                        ...analyzedEmailFromList,
+                        ...analysisUpdate
+                      };
+                    } else {
+                      console.log('❌ NO EMAIL TO UPDATE:', {
+                        reason: 'No selected email and analyzed email not found in list',
+                        analyzed_id: message.data.email_id,
+                        emails_count: emails.length
+                      });
+                      return currentSelectedEmail; // No change
+                    }
+                  }
+                });
                 // Also update the email in the emails array
                 setEmails(prevEmails => 
                   prevEmails.map(email => 
@@ -1115,6 +1220,17 @@
                       : email
                   )
                 );
+                
+                // Add success notification to chat
+                const email = emails.find(e => e.id === message.data.email_id);
+                const successMessage = {
+                  id: Date.now() + '_analysis_complete',
+                  text: `✅ Analysis complete for: "${email?.subject?.substring(0, 50) || 'Email'}" - Priority: ${analysis.priority}, Tone: ${analysis.tone}`,
+                  timestamp: new Date().toISOString(),
+                  sender: 'system'
+                };
+                setMessages(prev => [...prev, successMessage]);
+                
                 console.log('✅ Email analysis updated in UI for:', message.data.email_id);
               }
             }
@@ -1237,9 +1353,12 @@
           };
           setMessages(prev => [...prev, loadingMessage]);
           
+          // Clear emails list for gradual loading
+          setEmails([]);
+          
           wsRef.current.send(JSON.stringify({
             event: 'email:get_recent',
-            data: { limit: 50 }
+            data: { limit: 50, batch_size: 10 }
           }));
         }
       };

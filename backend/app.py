@@ -95,12 +95,12 @@ async def lifespan(app: FastAPI):
     await job_queue.start()
     logger.info("Job queue started")
     
-    # Auto-connect to Outlook
+    # Auto-connect to Outlook via COM service
     try:
-        connection_result = await cos_orchestrator.email_triage.hybrid_service.connect()
-        logger.info(f"Outlook auto-connection: {connection_result}")
+        connection_result = cos_orchestrator.email_triage.com_service.connect()
+        logger.info(f"Outlook COM auto-connection: {connection_result}")
     except Exception as e:
-        logger.warning(f"Failed to auto-connect to Outlook: {e}")
+        logger.warning(f"Failed to auto-connect to Outlook via COM: {e}")
     
     yield
     
@@ -234,6 +234,24 @@ class WSMessageHandler:
         self.websocket = websocket
         self.db = db
 
+    def _format_datetime(self, dt):
+        """Format datetime object to ISO string for frontend consumption"""
+        if dt is None:
+            return None
+        try:
+            # Handle both datetime objects and strings
+            if isinstance(dt, str):
+                from dateutil.parser import parse
+                dt = parse(dt)
+            
+            if hasattr(dt, 'isoformat'):
+                return dt.isoformat()
+            else:
+                return str(dt)
+        except Exception as e:
+            logger.warning(f"Failed to format datetime {dt}: {e}")
+            return str(dt) if dt else None
+
     async def handle_message(self, event: str, data: Dict[str, Any]):
         """Route WebSocket messages to appropriate handlers"""
         handlers = {
@@ -308,17 +326,19 @@ class WSMessageHandler:
             return
         
         try:
-            # Get email directly from Outlook using hybrid service
-            hybrid_service = cos_orchestrator.email_triage.hybrid_service
-            email_schema = await hybrid_service.load_email_with_cos_data(email_id)
+            # Use COM service for email actions
+            com_service = cos_orchestrator.email_triage.com_service
             
-            if not email_schema:
-                await manager.send_to_client(
-                    self.websocket,
-                    "email:action_error",
-                    {"message": "Email not found in Outlook"}
-                )
-                return
+            # Ensure COM connection
+            if not com_service.is_connected():
+                connection_result = com_service.connect()
+                if not connection_result.get('connected'):
+                    await manager.send_to_client(
+                        self.websocket,
+                        "email:action_error",
+                        {"message": f"Outlook connection failed: {connection_result.get('message', 'Unknown error')}"}
+                    )
+                    return
             
             # Apply action based on type
             result = {"success": False, "message": "Unknown action"}
@@ -326,19 +346,16 @@ class WSMessageHandler:
             if action == "move_to_folder":
                 folder_name = payload.get("folder_name")
                 if folder_name:
-                    success = await hybrid_service.move_email(email_id, folder_name)
+                    success = com_service.move_email(email_id, folder_name)
                     result = {"success": success, "message": f"Email {'moved to' if success else 'failed to move to'} {folder_name}"}
             
             elif action == "mark_read":
-                # This would require implementing mark_read in hybrid service
+                # This would require implementing mark_read in COM service
                 result = {"success": True, "message": "Action noted (implementation pending)"}
             
             elif action == "extract_tasks":
-                # Extract tasks and potentially create them in the system
-                if email_schema.analysis and email_schema.analysis.extracted_tasks:
-                    result = {"success": True, "tasks": email_schema.analysis.extracted_tasks, "message": "Tasks extracted"}
-                else:
-                    result = {"success": False, "message": "No tasks found to extract"}
+                # Extract tasks would require analyzing the email first
+                result = {"success": False, "message": "Task extraction not implemented yet"}
             
             # Send result back
             await manager.send_to_client(
@@ -461,19 +478,19 @@ class WSMessageHandler:
                     "check_status": "skipped_idle_timeout" if claude_client else "no_client"
                 }
             
-            # Outlook Status - lightweight check without establishing new connections
+            # Outlook Status - check COM service connection
             outlook_status = {"status": "disconnected", "method": None}
             try:
-                # Check existing connection state without calling connect()
-                hybrid_service = cos_orchestrator.email_triage.hybrid_service
+                com_service = cos_orchestrator.email_triage.com_service
                 
-                # Check if there's an active connection method
-                if hasattr(hybrid_service, '_connection_method') and hybrid_service._connection_method:
-                    logger.info(f"Status check: Found existing {hybrid_service._connection_method} connection")
+                if com_service and com_service.is_connected():
+                    connection_info = com_service.get_connection_info()
                     outlook_status = {
                         "status": "connected",
-                        "method": hybrid_service._connection_method
+                        "method": connection_info.get('method', 'com'),
+                        "account_info": connection_info.get('account_info')
                     }
+                    logger.info(f"Status check: COM service connected")
                 else:
                     # Lightweight COM test without full connection
                     from integrations.outlook.com_connector import COM_AVAILABLE
@@ -485,7 +502,7 @@ class WSMessageHandler:
                             if outlook_app:
                                 logger.info("Status check: Outlook application is running")
                                 outlook_status = {
-                                    "status": "connected",
+                                    "status": "available",
                                     "method": "com"
                                 }
                         except:
@@ -662,229 +679,253 @@ class WSMessageHandler:
         )
 
     async def handle_email_analyze(self, data: Dict[str, Any]):
-        """Handle email analysis request"""
+        """Handle on-demand email analysis request"""
+        logger.info(f"🔄 [WEBSOCKET] Received email:analyze request with data: {data}")
+        
         try:
             email_id = data.get("email_id")
-            subject = data.get("subject", "Unknown")
-            logger.info(f"🔄 Starting email analysis for: {email_id} - '{subject[:50]}' [UPDATED]")
-            
             if not email_id:
-                logger.error("Email analysis failed: No email ID provided")
+                logger.error("❌ [WEBSOCKET] Email analysis failed: No email ID provided")
                 await manager.send_to_client(
                     self.websocket,
                     "email:analysis_error", 
-                    {"message": "Email ID required"}
+                    {"message": "Email ID required", "email_id": None}
                 )
                 return
             
-            # Use EmailIntelligenceService directly with the provided data
-            subject = data.get("subject", "")
-            content = data.get("content", "")
-            sender = data.get("sender", "")
+            logger.info(f"🔄 [WEBSOCKET] Starting on-demand analysis for email: {email_id}")
             
-            # Create email data for analysis
-            email_data = {
-                "id": email_id,
-                "subject": subject,
-                "body_content": content,
-                "body_preview": content[:200] if content else "",
-                "sender_name": sender,
-                "sender": sender,
-                "received_at": "now"
-            }
+            # Use COM service for on-demand analysis
+            com_service = cos_orchestrator.email_triage.com_service
+            logger.info(f"🔍 [WEBSOCKET] Got COM service: {com_service}")
             
-            # Analyze email with intelligence service
-            logger.info(f"📧 Calling email intelligence service for analysis...")
-            from email_intelligence import EmailIntelligenceService
-            from claude_client import ClaudeClient
+            # Ensure COM connection
+            if not com_service.is_connected():
+                logger.info(f"🔄 [WEBSOCKET] COM not connected, attempting connection...")
+                connection_result = com_service.connect()
+                if not connection_result.get('connected'):
+                    logger.error(f"❌ [WEBSOCKET] Cannot analyze: {connection_result.get('message')}")
+                    await manager.send_to_client(
+                        self.websocket,
+                        "email:analysis_error", 
+                        {"message": f"Outlook connection failed: {connection_result.get('message', 'Unknown error')}", "email_id": email_id}
+                    )
+                    return
+            else:
+                logger.info(f"✅ [WEBSOCKET] COM service already connected")
             
-            claude_client = ClaudeClient()
-            intel_service = EmailIntelligenceService(claude_client)
-            analysis = await intel_service.analyze_email(email_data)
-            logger.info(f"✅ Analysis completed: {analysis.get('priority', 'N/A')}/{analysis.get('tone', 'N/A')}/{analysis.get('urgency', 'N/A')}")
-            
-            # Try to sync analysis to Outlook properties via COM
+            # Analyze single email on-demand with timeout protection
+            logger.info(f"🔄 [WEBSOCKET] About to call com_service.analyze_single_email({email_id}) with timeout")
             try:
-                from integrations.outlook.com_connector import OutlookCOMConnector
-                from integrations.outlook.property_sync import OutlookPropertySync
+                # Add 60 second timeout to prevent infinite hangs
+                analyzed_email = await asyncio.wait_for(
+                    com_service.analyze_single_email(email_id), 
+                    timeout=60.0
+                )
+                logger.info(f"✅ [WEBSOCKET] analyze_single_email returned: {type(analyzed_email)} with keys: {list(analyzed_email.keys()) if analyzed_email else 'None'}")
                 
-                com_connector = OutlookCOMConnector()
-                if com_connector.connect():
-                    outlook_item = com_connector.namespace.GetItemFromID(email_id)
-                    if outlook_item:
-                        # Create a simple object to hold analysis for property sync
-                        class SimpleEmailSchema:
-                            def __init__(self):
-                                self.id = email_id
-                                self.subject = subject
-                                self.analysis = analysis
-                                self.project_id = None
-                                self.confidence = analysis.get('confidence', 0.8)
-                                self.provenance = 'ai_analysis'
-                        
-                        email_schema = SimpleEmailSchema()
-                        
-                        prop_sync = OutlookPropertySync()
-                        prop_sync.com_connector = com_connector
-                        sync_success = prop_sync.write_cos_data_to_outlook(email_schema, outlook_item)
-                        
-                        if sync_success:
-                            logger.info(f"Successfully synced analysis to Outlook for email: {subject[:50]}")
-                        else:
-                            logger.warning(f"Failed to sync analysis to Outlook for email: {subject[:50]}")
-                    else:
-                        logger.warning(f"Could not find Outlook item for email: {email_id}")
-                else:
-                    logger.warning("Could not connect to Outlook for property sync")
-            except Exception as sync_e:
-                logger.error(f"Error syncing analysis to Outlook: {sync_e}")
-            
-            # Send analysis result
-            logger.info(f"📤 Sending analysis result to frontend: {email_id}")
-            await manager.send_to_client(
-                self.websocket,
-                "email:analyzed",
-                {"email_id": email_id, "analysis": analysis}
-            )
-            
-            # Send usage stats update
-            try:
-                usage_stats = {
-                    "calls_today": getattr(claude_client, 'calls_today', 0) + 1,
-                    "last_call": "now",
-                    "status": "active"
-                }
+            except asyncio.TimeoutError:
+                logger.error(f"❌ [WEBSOCKET] Email analysis timed out after 60 seconds for: {email_id}")
                 await manager.send_to_client(
                     self.websocket,
-                    "status:usage",
-                    usage_stats
+                    "email:analysis_error", 
+                    {"message": "Analysis timed out after 60 seconds - please try again", "email_id": email_id}
                 )
-            except Exception as usage_e:
-                logger.warning(f"Failed to send usage stats update: {usage_e}")
+                return
+            except Exception as analysis_e:
+                logger.error(f"❌ [WEBSOCKET] Email analysis failed: {analysis_e}")
+                await manager.send_to_client(
+                    self.websocket,
+                    "email:analysis_error",
+                    {"message": f"Analysis failed: {str(analysis_e)}", "email_id": email_id}
+                )
+                return
+            
+            if analyzed_email and analyzed_email.get('analysis'):
+                analysis = analyzed_email['analysis']
+                logger.info(f"✅ [WEBSOCKET] On-demand analysis completed: Priority={analysis.get('priority')}, Tone={analysis.get('tone')}, Urgency={analysis.get('urgency')}")
+                
+                # Send the complete analyzed email data
+                logger.info(f"🔄 [WEBSOCKET] Sending email:analyzed event to client...")
+                await manager.send_to_client(
+                    self.websocket,
+                    "email:analyzed",
+                    {
+                        "email_id": email_id, 
+                        "email_data": analyzed_email,
+                        "analysis": analysis
+                    }
+                )
+                logger.info(f"✅ [WEBSOCKET] Successfully sent email:analyzed event")
+            else:
+                logger.warning(f"⚠️ [WEBSOCKET] Analysis failed or returned empty results for email: {email_id}")
+                await manager.send_to_client(
+                    self.websocket,
+                    "email:analysis_error",
+                    {"message": "Analysis failed to generate results", "email_id": email_id}
+                )
             
         except Exception as e:
-            logger.error(f"Error analyzing email: {e}")
+            logger.error(f"❌ [WEBSOCKET] Error analyzing email: {e}")
+            import traceback
+            logger.error(f"❌ [WEBSOCKET] Traceback: {traceback.format_exc()}")
             await manager.send_to_client(
                 self.websocket,
                 "email:analysis_error",
-                {"message": f"Analysis failed: {str(e)}"}
+                {"message": f"Analysis failed: {str(e)}", "email_id": data.get("email_id")}
             )
 
     async def handle_get_recent_emails(self, data: Dict[str, Any]):
-        """Handle request for recent emails - fetch only, no analysis"""
+        """Handle request for recent emails with AI analysis"""
         try:
             limit = data.get("limit", 10)
-            logger.info(f"Getting recent emails with limit: {limit}")
+            logger.info(f"📧 Getting {limit} recent emails using COM-only service")
             
-            # Get recent emails directly from Outlook using LEGACY METHOD ONLY
-            hybrid_service = cos_orchestrator.email_triage.hybrid_service
-            logger.info(f"Hybrid service connection method: {hybrid_service._connection_method}")
-            logger.info(f"Hybrid service connected: {hybrid_service._connection_method is not None}")
+            # Use pure COM service for email loading with analysis
+            com_service = cos_orchestrator.email_triage.com_service
             
-            # ALWAYS use COM legacy method directly to ensure COS properties are included
-            if hybrid_service._connection_method == "com" and hybrid_service.com_connector:
-                emails = hybrid_service.com_connector._get_messages_legacy("Inbox", limit)
-                logger.info(f"Retrieved {len(emails) if emails else 0} emails from COM legacy method (includes COS data)")
-            else:
-                # Fallback to hybrid method for non-COM connections
-                emails = await hybrid_service.get_messages("Inbox", limit=limit)
-                logger.info(f"Retrieved {len(emails) if emails else 0} emails from hybrid service fallback")
+            # Ensure COM connection
+            if not com_service.is_connected():
+                connection_result = com_service.connect()
+                if not connection_result.get('connected'):
+                    logger.error(f"❌ Failed to connect to Outlook: {connection_result.get('message')}")
+                    await manager.send_to_client(
+                        self.websocket,
+                        "email:fetch_error", 
+                        {"message": f"Outlook connection failed: {connection_result.get('message', 'Unknown error')}"}
+                    )
+                    return
+                else:
+                    logger.info(f"✅ Connected to Outlook via {connection_result.get('method')}")
+            
+            # Load emails WITHOUT automatic analysis (only existing COS properties)
+            emails = com_service.get_recent_emails_without_analysis("Inbox", limit)
+            logger.info(f"📧 Retrieved {len(emails)} emails without proactive analysis")
             
             if emails:
-                from schemas.email_schema import EmailSchema, validate_email_schema
+                # Send emails in batches for progressive loading
+                batch_size = data.get("batch_size", 10)  # Default to 10 emails per batch
+                total_emails = len(emails)
                 
-                # Convert to simple JSON-safe format - legacy method already includes COS analysis
-                formatted_emails = []
-                for email_data in emails:
+                # Send initial progress update
+                await manager.send_to_client(
+                    self.websocket,
+                    "email:load_progress",
+                    {
+                        "status": "loading",
+                        "current": 0,
+                        "total": total_emails,
+                        "message": f"Loading {total_emails} emails..."
+                    }
+                )
+                
+                # Process emails in batches
+                for batch_start in range(0, total_emails, batch_size):
+                    batch_end = min(batch_start + batch_size, total_emails)
+                    batch_emails = emails[batch_start:batch_end]
+                    
+                    # Format emails in this batch
+                    formatted_batch = []
+                    for email_data in batch_emails:
+                        try:
+                            # Convert to frontend format
+                            simple_email = {
+                                "id": email_data.get("id", "unknown"),
+                                "subject": email_data.get("subject", "No Subject"),
+                                "sender_name": email_data.get("sender_name", "Unknown Sender"),
+                                "sender_email": email_data.get("sender_email", ""),
+                                "sender": email_data.get("sender", ""),
+                                "to_recipients": email_data.get("to_recipients", []),
+                                "cc_recipients": email_data.get("cc_recipients", []),
+                                "bcc_recipients": email_data.get("bcc_recipients", []),
+                                "body_content": email_data.get("body_content", ""),
+                                "body_preview": email_data.get("body_preview", ""),
+                                "received_at": self._format_datetime(email_data.get("received_at")),
+                                "is_read": email_data.get("is_read", False),
+                                "has_attachments": email_data.get("has_attachments", False),
+                                "importance": email_data.get("importance", "normal"),
+                                "analysis": email_data.get("analysis", {}),  # COM service includes analysis
+                                "project_id": email_data.get("project_id"),
+                                "confidence": email_data.get("confidence"),
+                                "provenance": email_data.get("provenance")
+                            }
+                            
+                            # Extract analysis properties for backward compatibility
+                            analysis = simple_email.get("analysis", {})
+                            if analysis and isinstance(analysis, dict):
+                                simple_email["priority"] = analysis.get("priority", "MEDIUM")
+                                simple_email["tone"] = analysis.get("tone", "PROFESSIONAL") 
+                                simple_email["urgency"] = analysis.get("urgency", "MEDIUM")
+                                logger.info(f"✅ Analysis loaded: {email_data.get('subject', 'Unknown')[:30]} - Priority={analysis.get('priority')}, Tone={analysis.get('tone')}, Urgency={analysis.get('urgency')}")
+                            else:
+                                simple_email["priority"] = "MEDIUM"
+                                simple_email["tone"] = "PROFESSIONAL" 
+                                simple_email["urgency"] = "MEDIUM"
+                                logger.info(f"⚠️ No analysis for: {email_data.get('subject', 'Unknown')[:30]}")
+                            
+                            formatted_batch.append(simple_email)
+                            
+                        except Exception as e:
+                            logger.error(f"❌ Failed to process email: {e}")
+                            continue
+                    
+                    # Send batch to frontend
                     try:
-                        # Legacy method already includes analysis, just use it directly
-                        body_content_raw = email_data.get("body_content", "")
-                        body_preview_raw = email_data.get("body_preview", "")
+                        await manager.send_to_client(
+                            self.websocket,
+                            "email:batch_loaded",
+                            {
+                                "emails": formatted_batch,
+                                "batch_start": batch_start,
+                                "batch_end": batch_end,
+                                "is_final": batch_end >= total_emails
+                            }
+                        )
+                        logger.info(f"📧 Sent batch {batch_start}-{batch_end} ({len(formatted_batch)} emails)")
                         
-                        # DEBUG LOGGING FOR BODY CONTENT
-                        logger.info(f"📧 WEBSOCKET BODY DEBUG - Subject: {email_data.get('subject', 'Unknown')[:30]}")
-                        logger.info(f"   Raw body_content length: {len(body_content_raw) if body_content_raw else 0}")
-                        logger.info(f"   Raw body_preview length: {len(body_preview_raw) if body_preview_raw else 0}")
-                        logger.info(f"   Body content type: {type(body_content_raw)}")
-                        if body_content_raw:
-                            logger.info(f"   First 100 chars: {body_content_raw[:100]}")
+                        # Send progress update
+                        await manager.send_to_client(
+                            self.websocket,
+                            "email:load_progress",
+                            {
+                                "status": "loading",
+                                "current": batch_end,
+                                "total": total_emails,
+                                "message": f"Loaded {batch_end}/{total_emails} emails..."
+                            }
+                        )
                         
-                        simple_email = {
-                            "id": email_data.get("id", "unknown"),
-                            "subject": email_data.get("subject", "No Subject"),
-                            "sender_name": email_data.get("sender_name", "Unknown Sender"),
-                            "sender_email": email_data.get("sender_email", ""),
-                            "sender": email_data.get("sender", ""),
-                            "to_recipients": email_data.get("to_recipients", []),
-                            "cc_recipients": email_data.get("cc_recipients", []),
-                            "bcc_recipients": email_data.get("bcc_recipients", []),
-                            "body_content": body_content_raw or "",  # Full body content for detail view
-                            "body_preview": body_preview_raw or "",
-                            "received_at": str(email_data.get("received_at", "")),
-                            "is_read": email_data.get("is_read", False),
-                            "has_attachments": email_data.get("has_attachments", False),
-                            "importance": email_data.get("importance", "normal"),
-                            "analysis": email_data.get("analysis")  # Legacy method includes this
-                        }
-                        
-                        # Extract analysis properties for backward compatibility
-                        analysis = simple_email.get("analysis")
-                        if analysis and isinstance(analysis, dict):
-                            simple_email["priority"] = analysis.get("priority", "Unassessed")
-                            simple_email["tone"] = analysis.get("tone", "Unassessed") 
-                            simple_email["urgency"] = analysis.get("urgency", "Unassessed")
-                            logger.info(f"✅ COS analysis found for {email_data.get('subject', 'Unknown')[:30]}: Priority={analysis.get('priority')}, Tone={analysis.get('tone')}, Urgency={analysis.get('urgency')}")
-                        else:
-                            simple_email["priority"] = "Unassessed"
-                            simple_email["tone"] = "Unassessed" 
-                            simple_email["urgency"] = "Unassessed"
-                            if analysis is not None:
-                                logger.info(f"Analysis not dict for {email_data.get('subject', 'Unknown')[:30]}: {type(analysis)} = {analysis}")
-                        
-                        formatted_emails.append(simple_email)
-                        
-                        # Debug body content length
-                        body_content_len = len(simple_email.get("body_content", ""))
-                        body_preview_len = len(simple_email.get("body_preview", ""))
-                        logger.info(f"📧 Email '{simple_email.get('subject', 'No subject')[:30]}': body_content={body_content_len} chars, body_preview={body_preview_len} chars (will send to WebSocket)")
+                        # Small delay to show progressive loading (can be removed in production)
+                        import asyncio
+                        await asyncio.sleep(0.2)
                         
                     except Exception as e:
-                        logger.error(f"Failed to process email: {e}")
-                        continue
+                        logger.error(f"❌ Failed to send email batch: {e}")
+                        break
                 
-                logger.info(f"Sending {len(formatted_emails)} emails to frontend")
+                # Send completion message
+                await manager.send_to_client(
+                    self.websocket,
+                    "email:load_progress",
+                    {
+                        "status": "completed",
+                        "current": total_emails,
+                        "total": total_emails,
+                        "message": f"Loaded all {total_emails} emails successfully"
+                    }
+                )
+                logger.info(f"✅ Completed loading {total_emails} emails in batches")
                 
-                # Log recipient data for debugging
-                for i, email in enumerate(formatted_emails[:2]):  # Log first 2 emails
-                    to_recips = email.get("to_recipients", [])
-                    cc_recips = email.get("cc_recipients", [])
-                    logger.info(f"Email {i+1} recipients debug:")
-                    logger.info(f"  Subject: {email.get('subject', 'No subject')[:40]}")
-                    logger.info(f"  Sender: {email.get('sender', 'No sender')[:40]}")
-                    logger.info(f"  Sender Name: {email.get('sender_name', 'No sender name')[:30]}")
-                    logger.info(f"  TO Recipients ({len(to_recips)}): {to_recips}")
-                    logger.info(f"  CC Recipients ({len(cc_recips)}): {cc_recips}")
-                
-                try:
-                    await manager.send_to_client(
-                        self.websocket,
-                        "email:recent_list",
-                        {"emails": formatted_emails}
-                    )
-                    logger.info("Email list sent successfully")
-                except Exception as e:
-                    logger.error(f"Failed to send email list: {e}")
-                    # Send empty list as fallback
-                    await manager.send_to_client(
-                        self.websocket,
-                        "email:recent_list",
-                        {"emails": [], "error": "Failed to serialize email data"}
-                    )
             else:
                 await manager.send_to_client(
                     self.websocket,
-                    "email:recent_list",
-                    {"emails": [], "message": "No recent emails found"}
+                    "email:load_progress",
+                    {
+                        "status": "completed",
+                        "current": 0,
+                        "total": 0,
+                        "message": "No recent emails found"
+                    }
                 )
                 
         except Exception as e:

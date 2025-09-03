@@ -304,31 +304,103 @@ class OutlookCOMConnector:
                             
                             # Extract email address - try multiple methods
                             address = ''
+                            debug_info = []
                             try:
                                 # First try direct Address property
-                                address = str(getattr(recipient, 'Address', ''))
+                                raw_address = str(getattr(recipient, 'Address', ''))
+                                debug_info.append(f"Raw address: '{raw_address}'")
+                                address = raw_address
                                 
                                 # If empty or not an email, try various methods to get actual email
                                 if not address or '@' not in address:
+                                    debug_info.append("Address empty or not email, trying AddressEntry...")
                                     # Try AddressEntry first
                                     if hasattr(recipient, 'AddressEntry') and recipient.AddressEntry:
                                         addr_entry = recipient.AddressEntry
                                         # Try SMTPAddress property
                                         try:
                                             smtp_addr = str(getattr(addr_entry, 'SMTPAddress', ''))
+                                            debug_info.append(f"SMTPAddress: '{smtp_addr}'")
                                             if smtp_addr and '@' in smtp_addr:
                                                 address = smtp_addr
-                                        except:
+                                                debug_info.append(f"Using SMTPAddress: '{smtp_addr}'")
+                                        except Exception as e:
+                                            debug_info.append(f"SMTPAddress failed: {e}")
                                             pass
                                         
-                                        # If SMTPAddress didn't work, try regular Address
+                                                # If SMTPAddress didn't work, try regular Address
                                         if not address or '@' not in address:
                                             try:
                                                 addr_from_entry = str(getattr(addr_entry, 'Address', ''))
+                                                debug_info.append(f"AddressEntry.Address: '{addr_from_entry}'")
                                                 if addr_from_entry and '@' in addr_from_entry:
                                                     address = addr_from_entry
-                                            except:
+                                                    debug_info.append(f"Using AddressEntry.Address: '{addr_from_entry}'")
+                                            except Exception as e:
+                                                debug_info.append(f"AddressEntry.Address failed: {e}")
                                                 pass
+                                        
+                                        # Try additional methods to resolve Exchange DN to SMTP
+                                        if not address or '@' not in address:
+                                            try:
+                                                # Try PropertyAccessor for PR_SMTP_ADDRESS
+                                                if hasattr(addr_entry, 'PropertyAccessor'):
+                                                    prop_accessor = addr_entry.PropertyAccessor
+                                                    smtp_from_prop = prop_accessor.GetProperty("http://schemas.microsoft.com/mapi/proptag/0x39FE001E")
+                                                    debug_info.append(f"PropertyAccessor SMTP: '{smtp_from_prop}'")
+                                                    if smtp_from_prop and '@' in str(smtp_from_prop):
+                                                        address = str(smtp_from_prop)
+                                                        debug_info.append(f"Using PropertyAccessor SMTP: '{address}'")
+                                            except Exception as e:
+                                                debug_info.append(f"PropertyAccessor failed: {e}")
+                                                pass
+                                        
+                                        # If we have an Exchange DN, try to resolve it
+                                        if not address or ('@' not in address and address.startswith('/')):
+                                            try:
+                                                # This is likely an Exchange DN, try to resolve via global address book
+                                                if hasattr(addr_entry, 'GetExchangeUser'):
+                                                    exchange_user = addr_entry.GetExchangeUser()
+                                                    if exchange_user:
+                                                        primary_smtp = str(getattr(exchange_user, 'PrimarySmtpAddress', ''))
+                                                        debug_info.append(f"Exchange PrimarySmtpAddress: '{primary_smtp}'")
+                                                        if primary_smtp and '@' in primary_smtp:
+                                                            address = primary_smtp
+                                                            debug_info.append(f"Resolved Exchange DN to SMTP: '{primary_smtp}'")
+                                            except Exception as e:
+                                                debug_info.append(f"Exchange DN resolution failed: {e}")
+                                                pass
+                                
+                                # Final fallback: If we still have an Exchange DN, try to extract the user part
+                                if address and address.startswith('/') and '@' not in address:
+                                    debug_info.append(f"Final fallback for Exchange DN: {address}")
+                                    try:
+                                        # Try to extract user identifier from DN path
+                                        if '/cn=' in address.lower():
+                                            cn_parts = address.lower().split('/cn=')
+                                            if len(cn_parts) > 1:
+                                                # Get the last CN part (usually the user identifier)
+                                                last_cn = cn_parts[-1]
+                                                # Try to extract a meaningful username
+                                                if '-' in last_cn:
+                                                    # Format like "506b8eb39253431b91e2e8be271e9e96-knakos"
+                                                    potential_user = last_cn.split('-')[-1]
+                                                elif len(last_cn) > 32:
+                                                    # Very long string, might have user at the end
+                                                    potential_user = last_cn[32:] if len(last_cn) > 32 else last_cn
+                                                else:
+                                                    potential_user = last_cn
+                                                
+                                                # Try to construct SMTP address
+                                                if potential_user and potential_user.isalpha():
+                                                    constructed_smtp = f"{potential_user}@nbg.gr"
+                                                    address = constructed_smtp
+                                                    debug_info.append(f"Constructed SMTP from DN: '{constructed_smtp}'")
+                                    except Exception as e:
+                                        debug_info.append(f"DN parsing failed: {e}")
+                                        
+                                else:
+                                    debug_info.append(f"Using raw address: '{address}'")
                                         
                             except (UnicodeError, UnicodeEncodeError, UnicodeDecodeError):
                                 try:
@@ -337,6 +409,9 @@ class OutlookCOMConnector:
                                     address = ''
                             except:
                                 address = ''
+                            
+                            # Log debug info for recipient extraction  
+                            logger.info(f"🔍 Recipient debug - Name: '{name}', Address: '{address}', Debug: {debug_info}")
                             
                             # Only add if we have at least a name or address
                             if name or address:
@@ -624,3 +699,95 @@ class OutlookCOMConnector:
             results[folder] = self.create_folder(folder)
         
         return results
+    
+    def _get_item_by_id(self, entry_id: str):
+        """Get Outlook item by EntryID"""
+        if not self.is_connected():
+            return None
+            
+        try:
+            return self.namespace.GetItemFromID(entry_id)
+        except Exception as e:
+            logger.error(f"Failed to get item by ID {entry_id}: {e}")
+            return None
+    
+    def _save_cos_properties(self, outlook_item, cos_properties: Dict[str, Any]) -> bool:
+        """Save COS properties to Outlook item using UserProperties"""
+        if not outlook_item:
+            return False
+            
+        try:
+            if not hasattr(outlook_item, 'UserProperties'):
+                logger.error("Outlook item does not support UserProperties")
+                return False
+            
+            user_props = outlook_item.UserProperties
+            
+            for prop_name, prop_value in cos_properties.items():
+                try:
+                    # Convert value to string to ensure consistency
+                    string_value = str(prop_value)
+                    
+                    # Check if property already exists
+                    existing_prop = None
+                    try:
+                        existing_prop = user_props.Find(prop_name)
+                    except:
+                        pass
+                    
+                    if existing_prop:
+                        # Try to update existing property
+                        try:
+                            existing_prop.Value = string_value
+                            logger.debug(f"Updated COS property: {prop_name} = {prop_value}")
+                        except Exception as update_e:
+                            logger.warning(f"Failed to update existing property {prop_name} (likely data type conflict), attempting to delete and recreate: {update_e}")
+                            # Data type conflict - need to delete existing and create new
+                            try:
+                                existing_prop.Delete()
+                                logger.debug(f"Deleted existing property {prop_name} due to data type conflict")
+                                
+                                # Force save to commit the deletion
+                                try:
+                                    outlook_item.Save()
+                                    logger.debug(f"Forced save after property deletion")
+                                except Exception as save_e:
+                                    logger.warning(f"Failed to save after property deletion: {save_e}")
+                                
+                                # Create new property with text type
+                                new_prop = user_props.Add(prop_name, 1)  # 1 = olText type
+                                new_prop.Value = string_value
+                                logger.debug(f"Recreated COS property: {prop_name} = {prop_value}")
+                            except Exception as recreate_e:
+                                logger.error(f"Failed to recreate property {prop_name}: {recreate_e}")
+                                # If we can't recreate, try renaming the property to avoid conflicts
+                                try:
+                                    alt_prop_name = f"{prop_name}_v2"
+                                    logger.info(f"Attempting to create alternative property: {alt_prop_name}")
+                                    alt_prop = user_props.Add(alt_prop_name, 1)
+                                    alt_prop.Value = string_value
+                                    logger.info(f"Successfully created alternative property: {alt_prop_name}")
+                                except Exception as alt_e:
+                                    logger.error(f"Failed to create alternative property: {alt_e}")
+                    else:
+                        # Create new property as text type
+                        new_prop = user_props.Add(prop_name, 1)  # 1 = olText type
+                        new_prop.Value = string_value
+                        logger.debug(f"Created COS property: {prop_name} = {prop_value}")
+                        
+                except Exception as prop_e:
+                    logger.error(f"Failed to save property {prop_name}: {prop_e}")
+                    continue
+            
+            # Save the item
+            outlook_item.Save()
+            logger.info(f"Successfully saved {len(cos_properties)} COS properties")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to save COS properties: {e}")
+            return False
+    
+    def move_email(self, email_id: str, target_folder: str) -> bool:
+        """Move email to target folder (alias for move_message)"""
+        return self.move_message(email_id, target_folder)

@@ -14,7 +14,7 @@ class EmailIntelligenceService:
         """Initialize with Claude client for AI processing"""
         self.claude_client = claude_client
         
-    async def analyze_email(self, email_data, db=None) -> Dict[str, Any]:
+    async def analyze_email(self, email_data, db=None, force_reanalysis: bool = False) -> Dict[str, Any]:
         """Analyze a single email for insights, priority, tone, urgency, and actions using Claude AI
         
         Args:
@@ -34,13 +34,18 @@ class EmailIntelligenceService:
                 sender = email_data.get('sender_name', '') or email_data.get('sender', '')
                 body = email_data.get('body_content', '') or email_data.get('body_preview', '') or email_data.get('preview', '')
             
-            # Create analysis prompt
+            # Create analysis prompt with cache-busting for force reanalysis
+            cache_buster = ""
+            if force_reanalysis:
+                import time
+                cache_buster = f"\n\n[FORCE_REANALYSIS_REQUEST_{int(time.time() * 1000)}]"
+            
             analysis_prompt = f"""
 Analyze this email for priority, tone, urgency, and provide a thoughtful summary with action recommendations:
 
 SUBJECT: {subject}
 SENDER: {sender}
-CONTENT: {body[:1500]}...
+CONTENT: {body[:1500]}...{cache_buster}
 
 Please provide analysis in this exact JSON format:
 {{
@@ -65,20 +70,60 @@ Consider:
             
             # Call Claude for analysis
             try:
+                logger.info(f"🤖 [EMAIL_INTELLIGENCE] About to call Claude API for email: {subject[:30]}")
+                logger.info(f"🔄 [EMAIL_INTELLIGENCE] Calling claude_client.generate_response with prompt length: {len(analysis_prompt)} chars")
+                
                 claude_response = await self.claude_client.generate_response("system/emailtriage", {}, analysis_prompt)
+                
+                logger.info(f"✅ [EMAIL_INTELLIGENCE] Claude API responded with {len(str(claude_response))} characters")
+                logger.info(f"🔍 [EMAIL_INTELLIGENCE] Claude response preview: {str(claude_response)[:200]}...")
                 
                 # Parse Claude's JSON response
                 import json
                 # Extract JSON from response if wrapped in text
                 response_text = claude_response.strip()
+                
+                logger.info(f"🔄 [EMAIL_INTELLIGENCE] Raw Claude response: {response_text[:300]}...")
+                
+                # Try multiple JSON extraction methods
+                json_text = None
+                
                 if '```json' in response_text:
                     json_start = response_text.find('```json') + 7
                     json_end = response_text.find('```', json_start)
-                    response_text = response_text[json_start:json_end].strip()
+                    if json_end > json_start:
+                        json_text = response_text[json_start:json_end].strip()
+                        logger.info(f"🔍 [EMAIL_INTELLIGENCE] Extracted JSON from ```json block")
                 elif response_text.startswith('```') and response_text.endswith('```'):
-                    response_text = response_text[3:-3].strip()
+                    json_text = response_text[3:-3].strip()
+                    logger.info(f"🔍 [EMAIL_INTELLIGENCE] Extracted JSON from ``` block")
+                else:
+                    # Try to find JSON object within the text
+                    json_start = response_text.find('{')
+                    if json_start >= 0:
+                        # Find matching closing brace
+                        brace_count = 0
+                        json_end = json_start
+                        for i in range(json_start, len(response_text)):
+                            if response_text[i] == '{':
+                                brace_count += 1
+                            elif response_text[i] == '}':
+                                brace_count -= 1
+                                if brace_count == 0:
+                                    json_end = i + 1
+                                    break
+                        
+                        if json_end > json_start:
+                            json_text = response_text[json_start:json_end]
+                            logger.info(f"🔍 [EMAIL_INTELLIGENCE] Found JSON object in text at position {json_start}-{json_end}")
                 
-                analysis = json.loads(response_text)
+                if not json_text:
+                    logger.error(f"❌ [EMAIL_INTELLIGENCE] Could not find JSON in response: {response_text}")
+                    raise Exception("No valid JSON found in Claude response")
+                
+                logger.info(f"🔄 [EMAIL_INTELLIGENCE] Parsing JSON: {json_text[:200]}...")
+                analysis = json.loads(json_text)
+                logger.info(f"✅ [EMAIL_INTELLIGENCE] Successfully parsed JSON analysis")
                 
                 # Ensure required fields and format
                 analysis.setdefault('priority', 'MEDIUM')

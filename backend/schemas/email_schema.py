@@ -39,7 +39,7 @@ class EmailSchema(BaseModel):
         arbitrary_types_allowed = True
 
 
-def create_email_from_com(outlook_item) -> EmailSchema:
+def create_email_from_com(outlook_item, skip_analysis: bool = False) -> EmailSchema:
     """Create EmailSchema from COM Outlook item"""
     
     # Get sender info
@@ -72,19 +72,74 @@ def create_email_from_com(outlook_item) -> EmailSchema:
                     except:
                         name = 'Unknown Name'
                     
-                    # Extract email address - try multiple methods
+                    # Extract email address - try multiple methods with Exchange DN resolution
                     address = ''
                     try:
                         # First try direct Address property
-                        address = str(getattr(recipient, 'Address', ''))
+                        raw_address = str(getattr(recipient, 'Address', ''))
+                        address = raw_address
                         
-                        # If empty or not an email, try AddressEntry
+                        # If empty or not an email, try various methods to get actual email
                         if not address or '@' not in address:
+                            # Try AddressEntry first
                             if hasattr(recipient, 'AddressEntry') and recipient.AddressEntry:
                                 addr_entry = recipient.AddressEntry
-                                addr_from_entry = str(getattr(addr_entry, 'Address', ''))
-                                if addr_from_entry and '@' in addr_from_entry:
-                                    address = addr_from_entry
+                                
+                                # Try SMTPAddress property
+                                try:
+                                    smtp_addr = str(getattr(addr_entry, 'SMTPAddress', ''))
+                                    if smtp_addr and '@' in smtp_addr:
+                                        address = smtp_addr
+                                except:
+                                    pass
+                                
+                                # If SMTPAddress didn't work, try regular Address
+                                if not address or '@' not in address:
+                                    try:
+                                        addr_from_entry = str(getattr(addr_entry, 'Address', ''))
+                                        if addr_from_entry and '@' in addr_from_entry:
+                                            address = addr_from_entry
+                                    except:
+                                        pass
+                                
+                                # Try Exchange DN resolution
+                                if not address or '@' not in address:
+                                    try:
+                                        # Try to resolve Exchange DN via GetExchangeUser
+                                        if hasattr(addr_entry, 'GetExchangeUser'):
+                                            exchange_user = addr_entry.GetExchangeUser()
+                                            if exchange_user:
+                                                primary_smtp = str(getattr(exchange_user, 'PrimarySmtpAddress', ''))
+                                                if primary_smtp and '@' in primary_smtp:
+                                                    address = primary_smtp
+                                    except:
+                                        pass
+                        
+                        # Final fallback: If we still have an Exchange DN, try to parse it
+                        if address and address.startswith('/') and '@' not in address:
+                            try:
+                                # Try to extract user identifier from DN path
+                                if '/cn=' in address.lower():
+                                    cn_parts = address.lower().split('/cn=')
+                                    if len(cn_parts) > 1:
+                                        # Get the last CN part (usually the user identifier)
+                                        last_cn = cn_parts[-1]
+                                        # Try to extract a meaningful username
+                                        if '-' in last_cn:
+                                            # Format like "506b8eb39253431b91e2e8be271e9e96-knakos"
+                                            potential_user = last_cn.split('-')[-1]
+                                        elif len(last_cn) > 32:
+                                            # Very long string, might have user at the end
+                                            potential_user = last_cn[32:] if len(last_cn) > 32 else last_cn
+                                        else:
+                                            potential_user = last_cn
+                                        
+                                        # Try to construct SMTP address
+                                        if potential_user and potential_user.isalpha():
+                                            constructed_smtp = f"{potential_user}@nbg.gr"
+                                            address = constructed_smtp
+                            except:
+                                pass
                                     
                     except (UnicodeError, UnicodeEncodeError, UnicodeDecodeError):
                         try:
@@ -143,12 +198,38 @@ def create_email_from_com(outlook_item) -> EmailSchema:
             raw_body = outlook_item.Body
             body_content = raw_body or ""
             body_preview = body_content[:200] + "..." if len(body_content) > 200 else body_content
-            logger.info(f"📧 BODY DEBUG - Subject: {getattr(outlook_item, 'Subject', 'No Subject')[:30]} | Raw body length: {len(raw_body) if raw_body else 0} | Final body_content length: {len(body_content)}")
+            # Removed logger call - not always available in schema context
         else:
-            logger.warning(f"📧 BODY DEBUG - No Body attribute for email: {getattr(outlook_item, 'Subject', 'No Subject')[:30]}")
+            # No Body attribute available
+            pass
     except Exception as e:
-        logger.error(f"📧 BODY DEBUG - Error getting body for email {getattr(outlook_item, 'Subject', 'No Subject')[:30]}: {e}")
+        # Body extraction failed - continue without body content
         pass
+    
+    # Extract COS properties and analysis data
+    project_id = None
+    confidence = None
+    provenance = None
+    linked_at = None
+    analysis = None
+    
+    if not skip_analysis:
+        try:
+            # Load COS properties using existing COM connector methods
+            cos_properties = _extract_cos_properties_from_item(outlook_item)
+            if cos_properties:
+                project_id = cos_properties.get("COS.ProjectId")
+                confidence = cos_properties.get("COS.Confidence") 
+                provenance = cos_properties.get("COS.Provenance")
+                linked_at = cos_properties.get("COS.LinkedAt")
+                
+                # Reconstruct analysis from COS properties
+                analysis = _reconstruct_analysis_from_cos_properties(cos_properties)
+                
+                # Note: logger not always available in schema context
+        except Exception as e:
+            # COS property loading failed - continue without COS data
+            pass
     
     return EmailSchema(
         id=outlook_item.EntryID,
@@ -168,7 +249,13 @@ def create_email_from_com(outlook_item) -> EmailSchema:
         has_attachments=getattr(outlook_item, 'Attachments', None) and outlook_item.Attachments.Count > 0,
         categories=getattr(outlook_item, 'Categories', ''),
         conversation_id=getattr(outlook_item, 'ConversationID', ''),
-        size=getattr(outlook_item, 'Size', 0)
+        size=getattr(outlook_item, 'Size', 0),
+        # COS metadata
+        project_id=project_id,
+        confidence=confidence,
+        provenance=provenance,
+        linked_at=linked_at,
+        analysis=analysis
     )
 
 
@@ -202,7 +289,13 @@ def email_to_dict(email_schema: EmailSchema) -> Dict[str, Any]:
         "has_attachments": email_schema.has_attachments,
         "categories": email_schema.categories,
         "conversation_id": email_schema.conversation_id,
-        "size": email_schema.size
+        "size": email_schema.size,
+        # COS metadata
+        "project_id": email_schema.project_id,
+        "confidence": email_schema.confidence,
+        "provenance": email_schema.provenance,
+        "linked_at": email_schema.linked_at,
+        "analysis": email_schema.analysis
     }
 
 
@@ -226,3 +319,147 @@ def validate_email_schema(email_data: Dict[str, Any]) -> bool:
         return True
     except Exception:
         return False
+
+
+def _extract_cos_properties_from_item(outlook_item) -> Dict[str, Any]:
+    """Extract COS properties from Outlook COM item"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    cos_properties = {}
+    
+    try:
+        if not hasattr(outlook_item, 'UserProperties'):
+            return cos_properties
+        
+        user_props = outlook_item.UserProperties
+        prop_count = getattr(user_props, 'Count', 0)
+        
+        if prop_count == 0:
+            return cos_properties
+        
+        # Try direct iteration first
+        try:
+            for prop in user_props:
+                try:
+                    prop_name = getattr(prop, 'Name', '')
+                    if prop_name and prop_name.startswith("COS."):
+                        prop_value = getattr(prop, 'Value', None)
+                        if prop_value is not None:
+                            cos_properties[prop_name] = prop_value
+                            logger.debug(f"Found COS property: {prop_name} = {prop_value}")
+                except Exception as prop_e:
+                    logger.debug(f"Error reading property: {prop_e}")
+                    continue
+                    
+        except Exception as iter_e:
+            # Fallback to indexed access
+            logger.debug(f"Direct iteration failed, trying indexed access: {iter_e}")
+            try:
+                for i in range(1, prop_count + 1):
+                    try:
+                        prop = user_props.Item(i)
+                        prop_name = getattr(prop, 'Name', '')
+                        if prop_name and prop_name.startswith("COS."):
+                            prop_value = getattr(prop, 'Value', None)
+                            if prop_value is not None:
+                                cos_properties[prop_name] = prop_value
+                                logger.debug(f"Found COS property (indexed): {prop_name} = {prop_value}")
+                    except Exception as idx_prop_e:
+                        logger.debug(f"Error reading indexed property {i}: {idx_prop_e}")
+                        continue
+                        
+            except Exception as idx_e:
+                logger.warning(f"Indexed access also failed: {idx_e}")
+        
+        logger.info(f"Extracted {len(cos_properties)} COS properties")
+        
+    except Exception as e:
+        logger.error(f"Failed to extract COS properties: {e}")
+    
+    return cos_properties
+
+
+def _reconstruct_analysis_from_cos_properties(cos_properties: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Reconstruct analysis data from COS properties"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    if not cos_properties:
+        return None
+        
+    analysis_data = {}
+    
+    # Map COS properties to analysis structure
+    prop_mapping = {
+        "COS.Priority": "priority",
+        "COS.Tone": "tone", 
+        "COS.Urgency": "urgency",
+        "COS.Summary": "summary",
+        "COS.AnalysisConfidence": "confidence"
+    }
+    
+    # Add alternative property names for conflict resolution
+    alt_prop_mapping = {
+        "COS.AnalysisConfidence_v2": "confidence"
+    }
+    
+    # Process main properties first
+    for cos_prop, analysis_key in prop_mapping.items():
+        if cos_prop in cos_properties and cos_properties[cos_prop] is not None:
+            value = cos_properties[cos_prop]
+            
+            # Special handling for confidence field
+            if analysis_key == "confidence":
+                if hasattr(value, 'timestamp'):
+                    try:
+                        # Convert datetime to confidence score (0.0 to 1.0) - legacy support
+                        timestamp = value.timestamp()
+                        confidence_score = min(1.0, max(0.0, (timestamp % 1000000) / 1000000))
+                        analysis_data[analysis_key] = confidence_score
+                        logger.debug(f"Converted datetime to confidence: {confidence_score}")
+                    except Exception as e:
+                        logger.warning(f"Failed to convert datetime to confidence: {e}")
+                        analysis_data[analysis_key] = 0.8  # Default
+                else:
+                    # Try to convert string to float
+                    try:
+                        confidence_value = float(str(value))
+                        # Ensure value is between 0.0 and 1.0
+                        analysis_data[analysis_key] = max(0.0, min(1.0, confidence_value))
+                        logger.debug(f"Converted string to confidence: {confidence_value}")
+                    except (ValueError, TypeError):
+                        logger.warning(f"Failed to parse confidence value '{value}', using default")
+                        analysis_data[analysis_key] = 0.8  # Default
+            else:
+                # Store other fields as strings
+                analysis_data[analysis_key] = str(value)
+    
+    # Process alternative properties if main ones are missing
+    for alt_cos_prop, analysis_key in alt_prop_mapping.items():
+        if analysis_key not in analysis_data and alt_cos_prop in cos_properties and cos_properties[alt_cos_prop] is not None:
+            value = cos_properties[alt_cos_prop]
+            logger.info(f"Using alternative property {alt_cos_prop} for {analysis_key}")
+            
+            # Handle confidence field from alternative property
+            if analysis_key == "confidence":
+                try:
+                    confidence_value = float(str(value))
+                    analysis_data[analysis_key] = max(0.0, min(1.0, confidence_value))
+                    logger.debug(f"Converted alternative confidence: {confidence_value}")
+                except (ValueError, TypeError):
+                    logger.warning(f"Failed to parse alternative confidence '{value}', using default")
+                    analysis_data[analysis_key] = 0.8
+    
+    # Only return analysis if we found actual data
+    if analysis_data:
+        # Set defaults for missing values
+        analysis_data.setdefault('priority', 'MEDIUM')
+        analysis_data.setdefault('tone', 'PROFESSIONAL') 
+        analysis_data.setdefault('urgency', 'MEDIUM')
+        analysis_data.setdefault('confidence', 0.8)
+        
+        logger.info(f"Reconstructed analysis: {analysis_data}")
+        return analysis_data
+    
+    return None

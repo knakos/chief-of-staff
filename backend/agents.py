@@ -10,12 +10,7 @@ from sqlalchemy.orm import Session
 from models import Project, Task, ContextEntry, Interview, Digest
 from claude_client import ClaudeClient
 from job_queue import JobQueue
-from integrations.outlook.connector import GraphAPIConnector
-from integrations.outlook.auth import OutlookAuthManager
-# EmailSyncService removed - no longer needed without database email storage
-from integrations.outlook.folder_manager import GTDFolderManager
-from integrations.outlook.extended_props import COSExtendedPropsManager
-from integrations.outlook.hybrid_service import HybridOutlookService
+from integrations.outlook.com_service import OutlookCOMService
 from email_intelligence import EmailIntelligenceService
 
 logger = logging.getLogger(__name__)
@@ -280,60 +275,101 @@ class COSOrchestrator(BaseAgent):
         return f"Context Interview Question:\n\n{question}\n\n(You can answer this later - it helps me understand your priorities better)"
     
     async def _handle_outlook_command(self, command: str, db: Session) -> str:
-        """Handle Outlook-specific commands"""
+        """Handle Outlook-specific commands using COM-only service"""
         logger.info(f"_handle_outlook_command called with: {command}")
         
         if "/outlook connect" in command:
-            # Try hybrid connection (COM first, then Graph API)
+            # Connect via COM service
             try:
-                result = await self.email_triage.hybrid_service.connect()
-                return f"Connection attempt: {result['message']} (Method: {result.get('method', 'None')})"
+                com_service = self.email_triage.com_service
+                result = com_service.connect()
+                
+                if result.get('connected'):
+                    account_info = result.get('account_info', {})
+                    primary_account = account_info.get('primary_account', {})
+                    account_name = primary_account.get('name', 'Unknown Account')
+                    return f"✅ Connected to Outlook via COM\nAccount: {account_name}\nMethod: {result.get('method')}"
+                else:
+                    return f"❌ Connection failed: {result.get('message', 'Unknown error')}"
+                    
             except Exception as e:
-                logger.error(f"Hybrid connection failed: {e}")
-                return f"Connection failed: {str(e)}"
+                logger.error(f"COM connection failed: {e}")
+                return f"❌ Connection failed: {str(e)}"
         
         # /outlook sync removed - emails are accessed directly from Outlook, not synced to database
         
         elif "/outlook setup" in command:
-            # Setup GTD folders using hybrid service
+            # Setup GTD folders using COM service
             try:
-                result = await self.email_triage.hybrid_service.setup_gtd_folders()
-                if result["success"]:
-                    folders = ', '.join(result["folders_created"].keys()) if "folders_created" in result else "GTD folders"
-                    return f"GTD folder structure created in Outlook via {result.get('method', 'unknown method')}: {folders}"
-                else:
-                    return f"Folder setup failed: {result.get('error', 'Unknown error')}"
+                com_service = self.email_triage.com_service
+                
+                # Ensure connection
+                if not com_service.is_connected():
+                    connection_result = com_service.connect()
+                    if not connection_result.get('connected'):
+                        return f"❌ Cannot setup folders: {connection_result.get('message', 'Connection failed')}"
+                
+                # Setup GTD folders
+                folder_results = com_service.setup_gtd_folders()
+                
+                successful_folders = [name for name, success in folder_results.items() if success]
+                failed_folders = [name for name, success in folder_results.items() if not success]
+                
+                result_msg = f"✅ GTD Folder Setup Complete!\n"
+                if successful_folders:
+                    result_msg += f"Created/Found: {', '.join(successful_folders)}\n"
+                if failed_folders:
+                    result_msg += f"❌ Failed: {', '.join(failed_folders)}"
+                    
+                return result_msg
+                
             except Exception as e:
                 logger.error(f"Outlook setup error: {e}")
-                return f"Folder setup failed: {str(e)}"
+                return f"❌ Folder setup failed: {str(e)}"
         
         elif "/outlook test" in command:
-            # Test COM connector directly
+            # Test COM service functionality
             try:
-                hybrid_service = self.email_triage.hybrid_service
-                if hybrid_service.com_connector and hybrid_service.com_connector.is_connected():
-                    # Test inbox access
-                    folders = hybrid_service.com_connector.get_folders()
-                    inbox_info = None
-                    for folder in folders:
-                        if folder["name"] == "Inbox":
-                            inbox_info = folder
-                            break
-                    
-                    if inbox_info:
-                        # Test message retrieval
-                        test_messages = hybrid_service.com_connector.get_messages(limit=5)
-                        return f"COM Test Results:\n" \
-                               f"- Inbox found: {inbox_info['name']}\n" \
-                               f"- Inbox item count: {inbox_info['item_count']}\n" \
-                               f"- Retrieved messages: {len(test_messages)}\n" \
-                               f"- Message subjects: {[msg.get('subject', 'No subject')[:50] for msg in test_messages[:3]]}"
-                    else:
-                        return "COM Test: Inbox folder not found"
-                else:
-                    return "COM Test: COM connector not connected"
+                com_service = self.email_triage.com_service
+                
+                # Test connection
+                if not com_service.is_connected():
+                    connection_result = com_service.connect()
+                    if not connection_result.get('connected'):
+                        return f"❌ COM Test Failed: {connection_result.get('message', 'Connection failed')}"
+                
+                # Test folder access
+                folders = com_service.get_folders()
+                inbox_info = None
+                for folder in folders:
+                    if folder["name"] == "Inbox":
+                        inbox_info = folder
+                        break
+                
+                if not inbox_info:
+                    return "❌ COM Test Failed: Inbox folder not found"
+                
+                # Test email retrieval with analysis
+                test_emails = await com_service.get_recent_emails_with_analysis("Inbox", 3)
+                
+                result = f"✅ COM Test Results:\n"
+                result += f"- Connection: Active\n"
+                result += f"- Inbox found: {inbox_info['name']} ({inbox_info['item_count']} items)\n"
+                result += f"- Retrieved emails: {len(test_emails)}\n"
+                
+                if test_emails:
+                    result += f"- Sample subjects:\n"
+                    for i, email in enumerate(test_emails[:3], 1):
+                        subject = email.get('subject', 'No subject')[:40]
+                        analysis = email.get('analysis', {})
+                        priority = analysis.get('priority', 'None') if analysis else 'None'
+                        result += f"  {i}. {subject} (Priority: {priority})\n"
+                
+                return result
+                
             except Exception as e:
-                return f"COM Test failed: {str(e)}"
+                logger.error(f"COM test failed: {e}")
+                return f"❌ COM Test failed: {str(e)}"
 
         elif "/outlook triage" in command:
             # Triage unprocessed Outlook emails
@@ -461,20 +497,17 @@ class ContextorAgent(BaseAgent):
         return questions
 
 class EmailTriageAgent(BaseAgent):
-    """Agent responsible for email processing and triage with Outlook integration"""
+    """Agent responsible for email processing and triage with COM-only Outlook integration"""
     
     def __init__(self, claude_client: ClaudeClient):
         super().__init__(claude_client)
         
-        # Initialize Outlook services (hybrid with COM fallback)
-        self.hybrid_service = HybridOutlookService()
+        # Initialize COM-only Outlook service
+        self.com_service = OutlookCOMService()
         
-        # Legacy services (still available for direct Graph API access)
-        self.graph_connector = GraphAPIConnector()
-        self.auth_manager = OutlookAuthManager()
-        # sync_service removed - no longer needed without database email storage
-        self.folder_manager = GTDFolderManager(self.graph_connector, self.auth_manager)
-        self.extended_props = COSExtendedPropsManager(self.graph_connector, self.auth_manager)
+        # Initialize and inject intelligence service
+        self.intelligence_service = EmailIntelligenceService(claude_client)
+        self.com_service.intelligence_service = self.intelligence_service
     
     async def process_email(self, email_data: dict, db: Session) -> Dict[str, Any]:
         """
