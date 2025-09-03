@@ -35,6 +35,23 @@ class ClaudeClient:
         self._idle_timeout_minutes = 30  # Only check connection after 30 minutes idle
         self._min_request_interval = 1.0  # Minimum 1 second between requests
         
+        # Usage tracking for cost management
+        self.usage_stats = {
+            'total_calls': 0,
+            'calls_today': 0,
+            'last_reset_date': datetime.now().date(),
+            'cache_hits': 0,
+            'mock_responses': 0,
+            'api_calls': 0,
+            'total_tokens_sent': 0,
+            'total_tokens_received': 0,
+            'cost_estimate': 0.0,
+            'call_history': []  # Last 20 calls with details
+        }
+        
+        # Callback for usage updates (to be set by app.py)
+        self.usage_update_callback = None
+        
         # Initialize Anthropic client
         self.client = AsyncAnthropic(api_key=self.api_key) if self.api_key else None
         
@@ -117,6 +134,7 @@ class ClaudeClient:
     
     async def generate_response(self, prompt_key: str, context: Dict[str, Any] = None, user_input: str = "") -> str:
         """Generate AI response using specified prompt with caching and rate limiting"""
+        start_time = time.time()
         try:
             # Update activity timestamp when user makes a request
             self.update_activity()
@@ -125,10 +143,12 @@ class ClaudeClient:
             cache_key = self._create_cache_key(prompt_key, context, user_input)
             
             # Check cache first (temporarily disabled for debugging)
-            # cached_response = self._get_cached_response(cache_key)
-            # if cached_response:
-            #     logger.info(f"Cache hit for prompt {prompt_key}")
-            #     return cached_response
+            cached_response = self._get_cached_response(cache_key)
+            if cached_response:
+                response_time = time.time() - start_time
+                self._track_usage(prompt_key, 'cache', response_time=response_time, cached=True)
+                logger.info(f"Cache hit for prompt {prompt_key}")
+                return cached_response
             
             system_prompt = self.get_prompt(prompt_key)
             logger.info(f"Using prompt for {prompt_key}: {system_prompt[:100]}...")
@@ -138,11 +158,15 @@ class ClaudeClient:
                 # Apply rate limiting before API call
                 await self._apply_rate_limiting()
                 logger.info(f"Calling Claude API with user input: {user_input}")
-                response = await self._call_claude_api(system_prompt, context, user_input)
+                response, tokens_sent, tokens_received = await self._call_claude_api(system_prompt, context, user_input)
+                response_time = time.time() - start_time
+                self._track_usage(prompt_key, 'api', tokens_sent=tokens_sent, tokens_received=tokens_received, response_time=response_time)
                 logger.info(f"Claude API response: {response[:100]}...")
             else:
                 logger.warning("Using mock response - no API key or USE_MOCK_RESPONSES=true")
                 response = await self._mock_claude_response(prompt_key, context, user_input)
+                response_time = time.time() - start_time
+                self._track_usage(prompt_key, 'mock', response_time=response_time)
             
             # Cache the response
             self._cache_response(cache_key, response)
@@ -150,6 +174,8 @@ class ClaudeClient:
             return response
             
         except Exception as e:
+            response_time = time.time() - start_time
+            self._track_usage(prompt_key, 'error', response_time=response_time, error=str(e))
             logger.error(f"Error generating response with prompt {prompt_key}: {e}")
             return f"Error: Could not generate response. {str(e)}"
     
@@ -186,8 +212,8 @@ class ClaudeClient:
             for key, _ in sorted_items[:100]:
                 del self.response_cache[key]
     
-    async def _call_claude_api(self, system_prompt: str, context: Dict[str, Any], user_input: str) -> str:
-        """Make actual API call to Claude"""
+    async def _call_claude_api(self, system_prompt: str, context: Dict[str, Any], user_input: str) -> tuple[str, int, int]:
+        """Make actual API call to Claude and return response with token counts"""
         if not self.client:
             raise Exception("Claude client not initialized - missing API key")
         
@@ -209,7 +235,11 @@ class ClaudeClient:
                 ]
             )
             
-            return response.content[0].text
+            # Extract token usage from response
+            tokens_sent = response.usage.input_tokens if hasattr(response.usage, 'input_tokens') else 0
+            tokens_received = response.usage.output_tokens if hasattr(response.usage, 'output_tokens') else 0
+            
+            return response.content[0].text, tokens_sent, tokens_received
             
         except Exception as e:
             logger.error(f"Claude API call failed: {e}")
@@ -468,3 +498,118 @@ Consider scheduling focused time for Project Alpha client feedback review - it's
         ]
         
         return suggestions
+    
+    def _reset_daily_stats_if_needed(self):
+        """Reset daily stats if it's a new day"""
+        today = datetime.now().date()
+        if self.usage_stats['last_reset_date'] != today:
+            self.usage_stats['calls_today'] = 0
+            self.usage_stats['last_reset_date'] = today
+            logger.info("Daily usage stats reset")
+    
+    def _track_usage(self, prompt_key: str, call_type: str, tokens_sent: int = 0, tokens_received: int = 0, response_time: float = 0.0, cached: bool = False, error: str = None):
+        """Track API usage for cost management and monitoring"""
+        self._reset_daily_stats_if_needed()
+        
+        # Update counters
+        self.usage_stats['total_calls'] += 1
+        self.usage_stats['calls_today'] += 1
+        
+        if cached:
+            self.usage_stats['cache_hits'] += 1
+        elif call_type == 'mock':
+            self.usage_stats['mock_responses'] += 1
+        elif call_type == 'api':
+            self.usage_stats['api_calls'] += 1
+            self.usage_stats['total_tokens_sent'] += tokens_sent
+            self.usage_stats['total_tokens_received'] += tokens_received
+            
+            # Estimate cost (Claude 3.5 Sonnet pricing: ~$3/1M input tokens, ~$15/1M output tokens)
+            input_cost = (tokens_sent / 1000000) * 3.0
+            output_cost = (tokens_received / 1000000) * 15.0
+            self.usage_stats['cost_estimate'] += input_cost + output_cost
+        
+        # Add to call history (keep last 20)
+        call_details = {
+            'timestamp': datetime.now().isoformat(),
+            'prompt_key': prompt_key,
+            'call_type': call_type,
+            'tokens_sent': tokens_sent,
+            'tokens_received': tokens_received,
+            'response_time_ms': round(response_time * 1000, 2),
+            'cached': cached,
+            'error': error
+        }
+        
+        self.usage_stats['call_history'].append(call_details)
+        if len(self.usage_stats['call_history']) > 20:
+            self.usage_stats['call_history'].pop(0)
+        
+        # Log detailed usage information
+        if call_type == 'api':
+            logger.info(f"AI_USAGE: {prompt_key} | API call | "
+                       f"Input: {tokens_sent} tokens | Output: {tokens_received} tokens | "
+                       f"Time: {response_time*1000:.1f}ms | "
+                       f"Cost: ${(tokens_sent/1000000*3.0 + tokens_received/1000000*15.0):.6f} | "
+                       f"Total today: {self.usage_stats['calls_today']} | "
+                       f"Total cost: ${self.usage_stats['cost_estimate']:.4f}")
+        elif cached:
+            logger.info(f"AI_USAGE: {prompt_key} | Cache hit | "
+                       f"Time: {response_time*1000:.1f}ms | "
+                       f"Total today: {self.usage_stats['calls_today']}")
+        elif call_type == 'mock':
+            logger.info(f"AI_USAGE: {prompt_key} | Mock response | "
+                       f"Time: {response_time*1000:.1f}ms | "
+                       f"Total today: {self.usage_stats['calls_today']}")
+        
+        if error:
+            logger.error(f"AI_USAGE_ERROR: {prompt_key} | {error}")
+        
+        # Trigger usage update callback if set
+        if self.usage_update_callback:
+            try:
+                asyncio.create_task(self.usage_update_callback())
+            except Exception as e:
+                logger.error(f"Error calling usage update callback: {e}")
+    
+    def get_usage_stats(self) -> Dict[str, Any]:
+        """Get current usage statistics for display in UI"""
+        self._reset_daily_stats_if_needed()
+        
+        # Calculate efficiency metrics
+        total_responses = (self.usage_stats['api_calls'] + 
+                          self.usage_stats['mock_responses'] + 
+                          self.usage_stats['cache_hits'])
+        
+        cache_hit_rate = (self.usage_stats['cache_hits'] / total_responses * 100) if total_responses > 0 else 0
+        
+        return {
+            'total_calls': self.usage_stats['total_calls'],
+            'calls_today': self.usage_stats['calls_today'],
+            'api_calls': self.usage_stats['api_calls'],
+            'cache_hits': self.usage_stats['cache_hits'],
+            'mock_responses': self.usage_stats['mock_responses'],
+            'cache_hit_rate': round(cache_hit_rate, 1),
+            'total_tokens_sent': self.usage_stats['total_tokens_sent'],
+            'total_tokens_received': self.usage_stats['total_tokens_received'],
+            'estimated_cost': round(self.usage_stats['cost_estimate'], 4),
+            'last_reset_date': self.usage_stats['last_reset_date'].isoformat(),
+            'recent_calls': self.usage_stats['call_history'][-5:] if self.usage_stats['call_history'] else []
+        }
+    
+    def reset_usage_stats(self):
+        """Reset all usage statistics (admin function)"""
+        self.usage_stats = {
+            'total_calls': 0,
+            'calls_today': 0,
+            'last_reset_date': datetime.now().date(),
+            'cache_hits': 0,
+            'mock_responses': 0,
+            'api_calls': 0,
+            'total_tokens_sent': 0,
+            'total_tokens_received': 0,
+            'cost_estimate': 0.0,
+            'call_history': []
+        }
+        logger.info("Usage statistics reset")
+        return {"status": "reset", "message": "All usage statistics have been reset"}

@@ -19,7 +19,7 @@ export default function App() {
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
 
   useEffect(() => {
-    connectWS("ws://127.0.0.1:8788/ws");
+    connectWS("ws://127.0.0.1:8787/ws");
     
     // Check connection status periodically
     const checkConnection = () => {

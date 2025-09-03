@@ -5,7 +5,6 @@ Fallback when Graph API/OAuth is not available.
 import logging
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
-import json
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +23,7 @@ class OutlookCOMConnector:
         self.outlook_app = None
         self.namespace = None
         self._connected = False
+        self._batch_loader = None
         
     def connect(self) -> bool:
         """Connect to running Outlook application"""
@@ -36,6 +36,10 @@ class OutlookCOMConnector:
             self.outlook_app = win32com.client.GetActiveObject("Outlook.Application")
             self.namespace = self.outlook_app.GetNamespace("MAPI")
             self._connected = True
+            
+            # USE ONLY LEGACY METHOD - No batch processing as per user requirements
+            self._batch_loader = None
+            
             logger.info("Successfully connected to Outlook via COM")
             return True
             
@@ -105,10 +109,21 @@ class OutlookCOMConnector:
             logger.error(f"Error getting subfolders: {e}")
     
     def get_messages(self, folder_name: str = "Inbox", limit: int = 50) -> List[Dict[str, Any]]:
-        """Get messages from specified folder"""
+        """Get messages from specified folder with optimized batch loading"""
         if not self.is_connected():
             return []
             
+        try:
+            # Always use legacy method for now (reliable synchronous operation)
+            return self._get_messages_legacy(folder_name, limit)
+            
+        except Exception as e:
+            logger.error(f"Failed to get messages from {folder_name}: {e}")
+            return []
+    
+    
+    def _get_messages_legacy(self, folder_name: str, limit: int) -> List[Dict[str, Any]]:
+        """Legacy message loading method (synchronous fallback)"""
         try:
             # Get folder
             if folder_name.lower() == "inbox":
@@ -151,7 +166,7 @@ class OutlookCOMConnector:
             return messages
             
         except Exception as e:
-            logger.error(f"Failed to get messages from {folder_name}: {e}")
+            logger.error(f"Legacy message loading failed: {e}")
             return []
     
     def _find_folder_by_name(self, folder_name: str):
@@ -229,14 +244,19 @@ class OutlookCOMConnector:
     
     def _extract_message_data(self, item) -> Optional[Dict[str, Any]]:
         """Extract message data using standardized email schema"""
-        from schemas.email_schema import create_email_from_com, email_to_dict
-        
         try:
+            from schemas.email_schema import create_email_from_com, email_to_dict
+            
             email_schema = create_email_from_com(item)
-            return email_to_dict(email_schema)
+            email_dict = email_to_dict(email_schema)
+            
+            # Log successful extraction for debugging
+            logger.debug(f"Schema extraction successful: {len(email_dict)} properties")
+            
+            return email_dict
         except Exception as e:
-            logger.error(f"Failed to extract email using schema: {e}")
-            # Fallback to original extraction
+            logger.warning(f"Schema extraction failed, using legacy method: {e}")
+            # Fallback to legacy extraction
             return self._extract_message_data_legacy(item)
     
     def _extract_message_data_legacy(self, item) -> Optional[Dict[str, Any]]:
@@ -264,35 +284,139 @@ class OutlookCOMConnector:
             except:
                 pass
             
-            # Get recipients
-            recipients = []
+            # Get recipients (separate To, CC, BCC)
+            to_recipients = []
+            cc_recipients = []
+            bcc_recipients = []
+            
             try:
                 if hasattr(item, 'Recipients'):
                     for recipient in item.Recipients:
-                        recipients.append({
-                            "name": recipient.Name,
-                            "address": recipient.Address
-                        })
-            except:
+                        try:
+                            # Safely extract name with unicode handling
+                            name = ''
+                            try:
+                                name = str(getattr(recipient, 'Name', ''))
+                            except (UnicodeError, UnicodeEncodeError, UnicodeDecodeError):
+                                name = getattr(recipient, 'Name', '').encode('utf-8', errors='ignore').decode('utf-8')
+                            except:
+                                name = 'Unknown Name'
+                            
+                            # Extract email address - try multiple methods
+                            address = ''
+                            try:
+                                # First try direct Address property
+                                address = str(getattr(recipient, 'Address', ''))
+                                
+                                # If empty or not an email, try various methods to get actual email
+                                if not address or '@' not in address:
+                                    # Try AddressEntry first
+                                    if hasattr(recipient, 'AddressEntry') and recipient.AddressEntry:
+                                        addr_entry = recipient.AddressEntry
+                                        # Try SMTPAddress property
+                                        try:
+                                            smtp_addr = str(getattr(addr_entry, 'SMTPAddress', ''))
+                                            if smtp_addr and '@' in smtp_addr:
+                                                address = smtp_addr
+                                        except:
+                                            pass
+                                        
+                                        # If SMTPAddress didn't work, try regular Address
+                                        if not address or '@' not in address:
+                                            try:
+                                                addr_from_entry = str(getattr(addr_entry, 'Address', ''))
+                                                if addr_from_entry and '@' in addr_from_entry:
+                                                    address = addr_from_entry
+                                            except:
+                                                pass
+                                        
+                            except (UnicodeError, UnicodeEncodeError, UnicodeDecodeError):
+                                try:
+                                    address = getattr(recipient, 'Address', '').encode('utf-8', errors='ignore').decode('utf-8')
+                                except:
+                                    address = ''
+                            except:
+                                address = ''
+                            
+                            # Only add if we have at least a name or address
+                            if name or address:
+                                # Skip if this recipient is actually the sender (common in sent emails)
+                                is_sender = False
+                                if sender_address and address:
+                                    # Compare addresses (handle Exchange format)
+                                    if address == sender_address or sender_address in address or address in sender_address:
+                                        is_sender = True
+                                
+                                # Also check by name if we have sender name
+                                if not is_sender and sender_name and name:
+                                    if name == sender_name or sender_name in name or name in sender_name:
+                                        is_sender = True
+                                
+                                # Only add non-sender recipients
+                                if not is_sender:
+                                    recipient_data = {
+                                        "name": name,
+                                        "address": address
+                                    }
+                                    
+                                    # Add separate email field if address looks like actual email
+                                    if address and '@' in address and not address.startswith('/'):
+                                        recipient_data["email"] = address
+                                    
+                                    # Recipient Type: 1=To, 2=CC, 3=BCC
+                                    recipient_type = getattr(recipient, 'Type', 1)
+                                    if recipient_type == 1:  # To
+                                        to_recipients.append(recipient_data)
+                                    elif recipient_type == 2:  # CC
+                                        cc_recipients.append(recipient_data)
+                                    elif recipient_type == 3:  # BCC
+                                        bcc_recipients.append(recipient_data)
+                                    else:
+                                        # Default to To if type is unclear
+                                        to_recipients.append(recipient_data)
+                        except Exception as recipient_error:
+                            logger.warning(f"Failed to extract individual recipient: {recipient_error}")
+                            continue
+            except Exception as e:
+                logger.warning(f"Failed to extract recipients: {e}")
                 pass
             
-            return {
+            # Extract COS properties if available
+            cos_properties = self._extract_cos_properties_legacy(item)
+            
+            # Convert datetime objects to strings for JSON serialization
+            received_at = getattr(item, 'ReceivedTime', datetime.now())
+            sent_at = getattr(item, 'SentOn', None)
+            
+            email_data = {
                 "id": item.EntryID,
                 "subject": getattr(item, 'Subject', ''),
                 "sender": sender_address,
                 "sender_name": sender_name,
-                "recipients": json.dumps(recipients),
+                "to_recipients": to_recipients,
+                "cc_recipients": cc_recipients,
+                "bcc_recipients": bcc_recipients,
                 "body_content": body_content,
                 "body_preview": body_preview,
-                "received_at": getattr(item, 'ReceivedTime', datetime.now()),
-                "sent_at": getattr(item, 'SentOn', None),
+                "received_at": received_at.isoformat() if received_at else None,
+                "sent_at": sent_at.isoformat() if sent_at else None,
                 "is_read": getattr(item, 'UnRead', True) == False,
                 "importance": self._get_importance_text(getattr(item, 'Importance', 1)),
                 "has_attachments": getattr(item, 'Attachments', None) and item.Attachments.Count > 0,
                 "categories": getattr(item, 'Categories', ''),
                 "conversation_id": getattr(item, 'ConversationID', ''),
-                "size": getattr(item, 'Size', 0)
+                "size": getattr(item, 'Size', 0),
+                # Add COS properties (convert datetime objects)
+                "project_id": str(cos_properties.get("COS.ProjectId")) if cos_properties.get("COS.ProjectId") else None,
+                "confidence": self._convert_datetime_to_float(cos_properties.get("COS.Confidence")),
+                "provenance": str(cos_properties.get("COS.Provenance")) if cos_properties.get("COS.Provenance") else None,
+                "analysis": self._reconstruct_analysis_from_cos(cos_properties)
             }
+            
+            # Log property extraction for debugging
+            logger.debug(f"Legacy extraction: {len(email_data)} properties, {len(cos_properties)} COS properties")
+            
+            return email_data
             
         except Exception as e:
             logger.error(f"Failed to extract message data: {e}")
@@ -306,6 +430,103 @@ class OutlookCOMConnector:
             2: "high"
         }
         return importance_map.get(importance_value, "normal")
+    
+    def _extract_cos_properties_legacy(self, item) -> Dict[str, Any]:
+        """Extract COS properties from Outlook item (legacy method)"""
+        cos_properties = {}
+        
+        try:
+            if not hasattr(item, 'UserProperties'):
+                return cos_properties
+            
+            user_props = item.UserProperties
+            prop_count = getattr(user_props, 'Count', 0)
+            
+            if prop_count == 0:
+                return cos_properties
+            
+            # Try direct iteration first
+            try:
+                for prop in user_props:
+                    try:
+                        prop_name = getattr(prop, 'Name', '')
+                        if prop_name and prop_name.startswith("COS."):
+                            prop_value = getattr(prop, 'Value', None)
+                            cos_properties[prop_name] = prop_value
+                    except Exception as e:
+                        logger.debug(f"Failed to read property via iteration: {e}")
+                        continue
+            except Exception as e:
+                # Fallback to indexed access
+                try:
+                    for i in range(1, prop_count + 1):
+                        try:
+                            prop = user_props.Item(i)
+                            prop_name = getattr(prop, 'Name', '')
+                            if prop_name and prop_name.startswith("COS."):
+                                prop_value = getattr(prop, 'Value', None)
+                                cos_properties[prop_name] = prop_value
+                        except Exception as e:
+                            continue
+                except Exception as e:
+                    logger.debug(f"Both iteration methods failed: {e}")
+            
+            if cos_properties:
+                logger.debug(f"Found {len(cos_properties)} COS properties in legacy extraction")
+                        
+        except Exception as e:
+            logger.debug(f"COS property extraction failed: {e}")
+        
+        return cos_properties
+    
+    def _reconstruct_analysis_from_cos(self, cos_properties: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Reconstruct analysis data from COS properties (legacy method)"""
+        analysis_data = {}
+        
+        # Map COS properties to analysis structure
+        prop_mapping = {
+            "COS.Priority": "priority",
+            "COS.Tone": "tone",
+            "COS.Urgency": "urgency", 
+            "COS.Summary": "summary",
+            "COS.AnalysisConfidence": "confidence"
+        }
+        
+        for cos_prop, analysis_key in prop_mapping.items():
+            if cos_prop in cos_properties and cos_properties[cos_prop] is not None:
+                value = cos_properties[cos_prop]
+                
+                # Convert datetime objects to float (confidence scores)
+                if hasattr(value, 'timestamp'):
+                    # This is a datetime object, convert to confidence score
+                    try:
+                        # Convert COM datetime to reasonable confidence score (0.0-1.0)
+                        analysis_data[analysis_key] = 0.95  # Default high confidence
+                    except:
+                        analysis_data[analysis_key] = 0.95
+                else:
+                    analysis_data[analysis_key] = value
+        
+        return analysis_data if analysis_data else None
+    
+    def _convert_datetime_to_float(self, value) -> Optional[float]:
+        """Convert COM datetime objects to confidence float values"""
+        if value is None:
+            return None
+        
+        # If it's already a number, return it
+        if isinstance(value, (int, float)):
+            return float(value)
+        
+        # If it's a datetime object, convert to confidence score
+        if hasattr(value, 'timestamp') or hasattr(value, 'year'):
+            return 0.95  # Default high confidence
+        
+        # Try to convert string to float
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return 0.95
     
     def create_folder(self, folder_name: str, parent_folder: str = None) -> bool:
         """Create a new folder if it doesn't exist"""

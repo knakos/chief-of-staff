@@ -33,6 +33,11 @@ python optimize_db.py
 # Test backend setup
 python test_setup.py  # Comprehensive setup validation
 
+# Debug and testing scripts (in backend/)
+python debug_email_extraction.py  # Debug email content extraction
+python test_recipient_extraction.py  # Test email recipient parsing
+python validate_complete_solution.py  # Validate system integration
+
 # Rate limiting and performance testing
 python -c "from claude_client import ClaudeClient; import asyncio; print('Testing rate limiting...'); asyncio.run(ClaudeClient()._apply_rate_limiting())"
 ```
@@ -235,7 +240,8 @@ This architecture ensures the system is responsive during active use while preve
 ## Development Notes
 
 ### Critical Implementation Details
-- **Prompt Management**: All prompts stored as `.md` files - these define the core AI intelligence behavior
+- **🚨 OUTLOOK INTEGRATION RULE**: **ONLY USE LEGACY METHODS** - No batch processing, no optimized loading, no hybrid methods. Always use `_get_messages_legacy()` and standard property sync methods. Batch loaders and optimized methods are explicitly forbidden and break COS property loading.
+- **Prompt Management**: All prompts stored as `.md` files in `llm/prompts/` - these define the core AI intelligence behavior
 - **Multi-Agent Coordination**: COS Orchestrator routes commands, specialized agents handle domain-specific tasks
 - **Interview Limits**: Context interviews limited to ≤1 per day to avoid user fatigue
 - **Development vs Production**: Mock responses when no `ANTHROPIC_API_KEY`, real Claude calls in production
@@ -243,7 +249,9 @@ This architecture ensures the system is responsive during active use while preve
 - **Windows COM Requirements**: `pywin32` installed, Outlook running with target account logged in
 - **Database Initialization**: Run `python init_db.py` to create tables with sample data
 - **Testing**: `python test_setup.py` validates entire backend setup without API keys
-- **Design System**: Use `design/modern-tokens.css` for styling, reusable components in `components/ui/`
+- **Design System**: Use `design/modern-tokens.css` for styling, reusable components in `electron/src/ui/components/ui/`
+- **Email Schema**: Emails accessed directly from Outlook via hybrid COM/Graph API, not stored in database
+- **WebSocket Events**: System uses event-driven architecture with JSON messages `{event, data}` format
 
 **Key Architecture Decisions:**
 - SQLite with WAL mode for concurrent access and performance
@@ -271,13 +279,16 @@ This architecture ensures the system is responsive during active use while preve
 - **Component Consistency**: Reusable component library ensures consistent behavior and styling
 
 ### Script Permissions & Common Issues
-- **Windows Environment**: Use `.venv\Scripts\python.exe` for all Python commands
+- **Windows Environment**: Use `.venv\Scripts\python.exe` for all Python commands in backend/
+- **WSL Environment**: Use `source .venv/bin/activate` and `python` commands in backend/
 - **Unicode Errors**: Windows console may fail with Unicode characters in test_setup.py - ignore cosmetic errors
 - **Backend must be started before frontend** for WebSocket connection
-- **Missing `.env` file** will cause backend startup failure
+- **Missing `.env` file** will cause backend startup failure - copy from `.env.example`
 - **Database optimization** should be run periodically for best performance
 - **Rate Limit Errors**: System now prevents 429 errors with 30-minute idle timeout and 1-second API spacing
 - **COM Requirements**: Windows Outlook must be running with target account logged in for COM integration
+- **Port Conflicts**: Backend runs on port 8787 - ensure no other services use this port
+- **Node/Electron Issues**: Run `npm install` in root directory before `npm run dev`
 
 ## Key Implementation Priorities
 
@@ -403,3 +414,26 @@ When building this system, remember:
 **Quality Gates**: Every new feature requires comprehensive testing, documentation updates, and user experience validation before deployment.
 
 **User Feedback Loop**: Implement analytics and feedback mechanisms to measure feature adoption and effectiveness, informing future development priorities.
+- Take the time you need to write a proper and correct solution.
+
+For non-trivial issues (e.g., unclear bugs, intermittent errors, complex flows), first add appropriate logging/debugging code (e.g., log inputs, intermediate states, and error conditions). This should be clear, lightweight, and relevant for diagnosing the issue.
+
+Use those logs to reason about where the bug or failure occurs, and then propose a fix.
+
+After applying a fix, thoroughly test the solution. Tests should cover:
+
+Typical cases (normal expected input).
+
+Edge cases (empty input, None, unusual values, very large/small numbers).
+
+Unicode and international text (e.g., "Café", "你好", "👩🏽‍💻").
+
+Error conditions (e.g., invalid input, division by zero).
+
+Verify and show the test results: expected vs. actual outputs.
+
+If any test fails, fix the code and re-run the tests until everything passes.
+
+Do not rush. It is better to take longer and deliver a thorough, correct, well-instrumented, and validated solution than to quickly return an incomplete one.
+
+Only when all tests pass should you report that the solution is complete. Always include the final tested code, the logging additions (if applicable), and the test results in your response.

@@ -4,7 +4,10 @@ import ErrorBoundary from './ErrorBoundary';
 // Email Detail component for displaying selected email
 const EmailDetail: React.FC<{ email: any; onBack: () => void }> = ({ email, onBack }) => {
   return (
-    <div style={{ height: '100%', padding: '20px' }}>
+    <div style={{ height: '100%', padding: '20px', backgroundColor: 'red' }}>
+      <div style={{ backgroundColor: 'yellow', color: 'black', padding: '50px', fontSize: '24px', textAlign: 'center', border: '10px solid blue' }}>
+        TEST: CAN YOU SEE THIS BIG COLORED BOX WHEN YOU SELECT AN EMAIL?
+      </div>
       <div style={{ marginBottom: '20px' }}>
         <button 
           onClick={onBack}
@@ -27,17 +30,209 @@ const EmailDetail: React.FC<{ email: any; onBack: () => void }> = ({ email, onBa
         </h2>
         
         <div style={{ marginBottom: '15px', fontSize: '14px', color: '#6b7280' }}>
-          <div><strong>From:</strong> {email?.sender_name || email?.sender_email || 'Unknown Sender'}</div>
+          <div><strong>From:</strong> {email?.sender_name || email?.sender_email || email?.sender || 'Unknown Sender'}</div>
           <div><strong>Date:</strong> {email?.received_at ? new Date(email.received_at).toLocaleString() : 'Unknown date'}</div>
           <div><strong>Priority:</strong> {email?.importance || 'Normal'}</div>
-        </div>
-        
-        <div style={{ fontSize: '14px', lineHeight: '1.5', color: '#374151' }}>
-          <strong>Preview:</strong>
-          <div style={{ marginTop: '10px', padding: '15px', backgroundColor: 'white', borderRadius: '4px', border: '1px solid #e5e7eb' }}>
-            {email?.body_preview || 'No preview available'}
+          <div><strong>Size:</strong> {email?.size ? `${Math.round(email.size / 1024)} KB` : 'Unknown'}</div>
+          <div><strong>Read Status:</strong> {email?.is_read ? 'Read' : 'Unread'}</div>
+          {email?.has_attachments && <div><strong>📎 Has Attachments</strong></div>}
+          {email?.categories && <div><strong>Categories:</strong> {email.categories}</div>}
+          
+          {/* Recipients Section */}
+          <div>
+            {email?.to_recipients && email.to_recipients.length > 0 && (
+              <div style={{ marginTop: '10px' }}>
+                <strong>To:</strong> {email.to_recipients.map((recip: any, index: number) => (
+                  <span key={index}>
+                    {recip.name ? `${recip.name} <${recip.address}>` : recip.address}
+                    {index < email.to_recipients.length - 1 ? ', ' : ''}
+                  </span>
+                ))}
+              </div>
+            )}
+            
+            {email?.cc_recipients && email.cc_recipients.length > 0 && (
+              <div style={{ marginTop: '5px' }}>
+                <strong>CC:</strong> {email.cc_recipients.map((recip: any, index: number) => (
+                  <span key={index}>
+                    {recip.name ? `${recip.name} <${recip.address}>` : recip.address}
+                    {index < email.cc_recipients.length - 1 ? ', ' : ''}
+                  </span>
+                ))}
+              </div>
+            )}
+            
+            {email?.bcc_recipients && email.bcc_recipients.length > 0 && (
+              <div style={{ marginTop: '5px' }}>
+                <strong>BCC:</strong> {email.bcc_recipients.map((recip: any, index: number) => (
+                  <span key={index}>
+                    {recip.name ? `${recip.name} <${recip.address}>` : recip.address}
+                    {index < email.bcc_recipients.length - 1 ? ', ' : ''}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
+
+        {/* COS Properties Section */}
+        {(email?.project_id || email?.analysis || email?.confidence) && (
+          <div style={{ 
+            marginBottom: '20px', 
+            padding: '15px', 
+            backgroundColor: '#e0f2fe', 
+            borderRadius: '8px', 
+            border: '1px solid #0891b2' 
+          }}>
+            <h3 style={{ margin: '0 0 10px 0', color: '#0f172a', fontSize: '16px' }}>
+              🤖 AI Analysis
+            </h3>
+            
+            {email?.project_id && (
+              <div style={{ marginBottom: '8px', fontSize: '14px' }}>
+                <strong>Project ID:</strong> <span style={{ color: '#0891b2', fontFamily: 'monospace' }}>{email.project_id}</span>
+              </div>
+            )}
+            
+            {email?.confidence && (
+              <div style={{ marginBottom: '8px', fontSize: '14px' }}>
+                <strong>Confidence:</strong> <span style={{ color: '#059669' }}>{Math.round(email.confidence * 100)}%</span>
+              </div>
+            )}
+            
+            {email?.provenance && (
+              <div style={{ marginBottom: '8px', fontSize: '14px' }}>
+                <strong>Source:</strong> <span style={{ color: '#6b7280' }}>{email.provenance}</span>
+              </div>
+            )}
+            
+            {email?.analysis && (
+              <div style={{ marginTop: '12px' }}>
+                <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '8px', color: '#0f172a' }}>
+                  Analysis Details:
+                </div>
+                
+                {email.analysis.priority && (
+                  <div style={{ marginBottom: '6px', fontSize: '13px' }}>
+                    <strong>Priority:</strong> 
+                    <span style={{ 
+                      marginLeft: '8px',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      backgroundColor: email.analysis.priority === 'high' ? '#fecaca' : 
+                                       email.analysis.priority === 'medium' ? '#fed7aa' : '#d1fae5',
+                      color: email.analysis.priority === 'high' ? '#991b1b' : 
+                             email.analysis.priority === 'medium' ? '#9a3412' : '#065f46',
+                      fontSize: '12px'
+                    }}>
+                      {email.analysis.priority}
+                    </span>
+                  </div>
+                )}
+                
+                {email.analysis.urgency && (
+                  <div style={{ marginBottom: '6px', fontSize: '13px' }}>
+                    <strong>Urgency:</strong>
+                    <span style={{ 
+                      marginLeft: '8px',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      backgroundColor: email.analysis.urgency === 'high' ? '#fecaca' : 
+                                       email.analysis.urgency === 'medium' ? '#fed7aa' : '#d1fae5',
+                      color: email.analysis.urgency === 'high' ? '#991b1b' : 
+                             email.analysis.urgency === 'medium' ? '#9a3412' : '#065f46',
+                      fontSize: '12px'
+                    }}>
+                      {email.analysis.urgency}
+                    </span>
+                  </div>
+                )}
+                
+                {email.analysis.tone && (
+                  <div style={{ marginBottom: '6px', fontSize: '13px' }}>
+                    <strong>Tone:</strong>
+                    <span style={{ 
+                      marginLeft: '8px',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      backgroundColor: '#e0e7ff',
+                      color: '#3730a3',
+                      fontSize: '12px'
+                    }}>
+                      {email.analysis.tone}
+                    </span>
+                  </div>
+                )}
+                
+                {email.analysis.summary && (
+                  <div style={{ marginTop: '10px' }}>
+                    <strong style={{ fontSize: '13px' }}>AI Summary:</strong>
+                    <div style={{ 
+                      marginTop: '6px',
+                      padding: '10px',
+                      backgroundColor: 'white',
+                      borderRadius: '6px',
+                      border: '1px solid #cbd5e1',
+                      fontSize: '13px',
+                      lineHeight: '1.4',
+                      color: '#374151',
+                      fontStyle: 'italic'
+                    }}>
+                      {email.analysis.summary}
+                    </div>
+                  </div>
+                )}
+                
+                {email.analysis.confidence && (
+                  <div style={{ marginTop: '8px', fontSize: '12px', color: '#6b7280' }}>
+                    Analysis confidence: {Math.round(email.analysis.confidence * 100)}%
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        
+        <div className="green-email-body" style={{ fontSize: '14px', lineHeight: '1.5', color: '#374151' }}>
+          <strong>Body:</strong>
+          <textarea 
+            value={email?.body_content || 'No body content available'} 
+            readOnly
+            style={{ 
+              marginTop: '10px', 
+              width: '100%', 
+              minHeight: '300px',
+              padding: '15px', 
+              backgroundColor: 'white', 
+              borderRadius: '4px', 
+              border: '1px solid #e5e7eb',
+              fontSize: '13px',
+              lineHeight: '1.5',
+              fontFamily: 'inherit',
+              resize: 'vertical'
+            }}
+          />
+        </div>
+
+        {/* Debug: Show all properties */}
+        <details style={{ marginTop: '20px' }}>
+          <summary style={{ cursor: 'pointer', color: '#6b7280', fontSize: '12px' }}>
+            🔍 Debug: Show All Properties ({Object.keys(email || {}).length} total)
+          </summary>
+          <div style={{ 
+            marginTop: '10px', 
+            padding: '15px', 
+            backgroundColor: '#f9fafb', 
+            borderRadius: '4px', 
+            border: '1px solid #e5e7eb',
+            fontSize: '11px',
+            fontFamily: 'monospace'
+          }}>
+            <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+              {JSON.stringify(email, null, 2)}
+            </pre>
+          </div>
+        </details>
       </div>
     </div>
   );
@@ -198,11 +393,17 @@ const SmartEmailList: React.FC = () => {
               </div>
               
               <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '6px' }}>
-                <strong>From:</strong> {email.sender_name || email.sender_email || 'Unknown'}
+                <strong>From:</strong> {email.sender_name || email.sender_email || email.sender || 'Unknown'}
+                {(email.to_recipients?.length > 0 || email.cc_recipients?.length > 0) && (
+                  <span style={{ marginLeft: '10px', fontSize: '12px', color: '#9ca3af' }}>
+                    • To: {email.to_recipients?.length || 0}
+                    {email.cc_recipients?.length > 0 && `, CC: ${email.cc_recipients.length}`}
+                  </span>
+                )}
               </div>
               
               <div style={{ fontSize: '13px', color: '#9ca3af', marginBottom: '8px' }}>
-                {email.body_preview || 'No preview available'}
+                {email.body_content || email.body_preview || 'No body content available'}
               </div>
               
               <div style={{ 
@@ -215,21 +416,69 @@ const SmartEmailList: React.FC = () => {
                 <span>
                   {email.received_at ? new Date(email.received_at).toLocaleDateString() : 'Unknown date'}
                 </span>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                   {email.has_attachments && (
-                    <span style={{ backgroundColor: '#ddd6fe', color: '#7c3aed', padding: '2px 6px', borderRadius: '4px' }}>
+                    <span style={{ backgroundColor: '#ddd6fe', color: '#7c3aed', padding: '2px 6px', borderRadius: '4px', fontSize: '11px' }}>
                       📎
                     </span>
                   )}
-                  <span style={{ 
-                    backgroundColor: email.importance === 'high' ? '#fecaca' : '#f3f4f6',
-                    color: email.importance === 'high' ? '#dc2626' : '#6b7280',
-                    padding: '2px 6px',
-                    borderRadius: '4px',
-                    textTransform: 'capitalize'
-                  }}>
-                    {email.importance || 'normal'}
-                  </span>
+                  
+                  {/* COS Analysis Indicator */}
+                  {(email.analysis || email.project_id) && (
+                    <span style={{ backgroundColor: '#e0f2fe', color: '#0891b2', padding: '2px 6px', borderRadius: '4px', fontSize: '11px' }}>
+                      🤖 AI
+                    </span>
+                  )}
+                  
+                  {/* Priority indicator */}
+                  {email.analysis?.priority && (
+                    <span style={{ 
+                      backgroundColor: email.analysis.priority === 'high' ? '#fecaca' : 
+                                       email.analysis.priority === 'medium' ? '#fed7aa' : '#d1fae5',
+                      color: email.analysis.priority === 'high' ? '#dc2626' : 
+                             email.analysis.priority === 'medium' ? '#ea580c' : '#059669',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      fontSize: '11px',
+                      textTransform: 'capitalize'
+                    }}>
+                      {email.analysis.priority}
+                    </span>
+                  )}
+                  
+                  {/* Urgency indicator */}
+                  {email.analysis?.urgency && email.analysis.urgency !== 'normal' && (
+                    <span style={{ 
+                      backgroundColor: email.analysis.urgency === 'high' ? '#fecaca' : '#fed7aa',
+                      color: email.analysis.urgency === 'high' ? '#dc2626' : '#ea580c',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      fontSize: '11px'
+                    }}>
+                      ⚡ {email.analysis.urgency}
+                    </span>
+                  )}
+                  
+                  {/* Project indicator */}
+                  {email.project_id && (
+                    <span style={{ backgroundColor: '#f0fdf4', color: '#16a34a', padding: '2px 6px', borderRadius: '4px', fontSize: '11px' }}>
+                      📁 Project
+                    </span>
+                  )}
+                  
+                  {/* Regular importance fallback */}
+                  {!email.analysis?.priority && (
+                    <span style={{ 
+                      backgroundColor: email.importance === 'high' ? '#fecaca' : '#f3f4f6',
+                      color: email.importance === 'high' ? '#dc2626' : '#6b7280',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      fontSize: '11px',
+                      textTransform: 'capitalize'
+                    }}>
+                      {email.importance || 'normal'}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

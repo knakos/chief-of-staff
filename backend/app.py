@@ -195,8 +195,38 @@ class ConnectionManager:
                 await websocket.send_text(json.dumps(error_message, default=str))
             except:
                 pass  # If even error sending fails, give up gracefully
+    
+    async def broadcast_to_all(self, event: str, data: Any):
+        """Broadcast message to all connected clients"""
+        message = {"event": event, "data": data}
+        message_str = json.dumps(message, default=str)
+        
+        disconnected = []
+        for connection_id, websocket in self.active_connections.items():
+            try:
+                await websocket.send_text(message_str)
+            except Exception as e:
+                logger.warning(f"Failed to send to connection {connection_id}: {e}")
+                disconnected.append(connection_id)
+        
+        # Clean up disconnected clients
+        for conn_id in disconnected:
+            self.active_connections.pop(conn_id, None)
+            self.connection_metadata.pop(conn_id, None)
 
 manager = ConnectionManager()
+
+# Global function to broadcast usage updates
+async def broadcast_usage_update():
+    """Broadcast usage statistics to all connected clients"""
+    try:
+        usage_stats = claude_client.get_usage_stats()
+        await manager.broadcast_to_all("status:usage", usage_stats)
+    except Exception as e:
+        logger.error(f"Error broadcasting usage update: {e}")
+
+# Set the usage callback on claude_client
+claude_client.usage_update_callback = broadcast_usage_update
 
 # WebSocket message handlers
 class WSMessageHandler:
@@ -468,7 +498,11 @@ class WSMessageHandler:
             await manager.send_to_client(self.websocket, "status:ai", ai_status)
             await manager.send_to_client(self.websocket, "status:outlook", outlook_status)
             
-            logger.info(f"Status update sent - AI: {ai_status['status']}, Outlook: {outlook_status['status']}")
+            # Send usage statistics update
+            usage_stats = claude_client.get_usage_stats()
+            await manager.send_to_client(self.websocket, "status:usage", usage_stats)
+            
+            logger.info(f"Status update sent - AI: {ai_status['status']}, Outlook: {outlook_status['status']}, Usage: {usage_stats['calls_today']} calls today")
             
         except Exception as e:
             logger.error(f"Error handling status request: {e}")
@@ -631,7 +665,11 @@ class WSMessageHandler:
         """Handle email analysis request"""
         try:
             email_id = data.get("email_id")
+            subject = data.get("subject", "Unknown")
+            logger.info(f"🔄 Starting email analysis for: {email_id} - '{subject[:50]}' [UPDATED]")
+            
             if not email_id:
+                logger.error("Email analysis failed: No email ID provided")
                 await manager.send_to_client(
                     self.websocket,
                     "email:analysis_error", 
@@ -639,40 +677,90 @@ class WSMessageHandler:
                 )
                 return
             
-            # Get email directly from Outlook using hybrid service
-            hybrid_service = cos_orchestrator.email_triage.hybrid_service
-            email_schema = await hybrid_service.load_email_with_cos_data(email_id)
+            # Use EmailIntelligenceService directly with the provided data
+            subject = data.get("subject", "")
+            content = data.get("content", "")
+            sender = data.get("sender", "")
             
-            if not email_schema:
-                await manager.send_to_client(
-                    self.websocket,
-                    "email:analysis_error",
-                    {"message": "Email not found in Outlook"}
-                )
-                return
+            # Create email data for analysis
+            email_data = {
+                "id": email_id,
+                "subject": subject,
+                "body_content": content,
+                "body_preview": content[:200] if content else "",
+                "sender_name": sender,
+                "sender": sender,
+                "received_at": "now"
+            }
             
             # Analyze email with intelligence service
-            analysis = await cos_orchestrator.email_intelligence.analyze_email(email_schema, self.db)
+            logger.info(f"📧 Calling email intelligence service for analysis...")
+            from email_intelligence import EmailIntelligenceService
+            from claude_client import ClaudeClient
             
-            # Add analysis to email schema
-            email_schema.analysis = analysis
+            claude_client = ClaudeClient()
+            intel_service = EmailIntelligenceService(claude_client)
+            analysis = await intel_service.analyze_email(email_data)
+            logger.info(f"✅ Analysis completed: {analysis.get('priority', 'N/A')}/{analysis.get('tone', 'N/A')}/{analysis.get('urgency', 'N/A')}")
             
-            # Sync COS analysis back to Outlook properties
+            # Try to sync analysis to Outlook properties via COM
             try:
-                sync_success = await hybrid_service.sync_email_analysis_to_outlook(email_schema)
-                if sync_success:
-                    logger.info(f"Successfully synced analysis to Outlook for email: {email_schema.subject[:50]}")
+                from integrations.outlook.com_connector import OutlookCOMConnector
+                from integrations.outlook.property_sync import OutlookPropertySync
+                
+                com_connector = OutlookCOMConnector()
+                if com_connector.connect():
+                    outlook_item = com_connector.namespace.GetItemFromID(email_id)
+                    if outlook_item:
+                        # Create a simple object to hold analysis for property sync
+                        class SimpleEmailSchema:
+                            def __init__(self):
+                                self.id = email_id
+                                self.subject = subject
+                                self.analysis = analysis
+                                self.project_id = None
+                                self.confidence = analysis.get('confidence', 0.8)
+                                self.provenance = 'ai_analysis'
+                        
+                        email_schema = SimpleEmailSchema()
+                        
+                        prop_sync = OutlookPropertySync()
+                        prop_sync.com_connector = com_connector
+                        sync_success = prop_sync.write_cos_data_to_outlook(email_schema, outlook_item)
+                        
+                        if sync_success:
+                            logger.info(f"Successfully synced analysis to Outlook for email: {subject[:50]}")
+                        else:
+                            logger.warning(f"Failed to sync analysis to Outlook for email: {subject[:50]}")
+                    else:
+                        logger.warning(f"Could not find Outlook item for email: {email_id}")
                 else:
-                    logger.warning(f"Failed to sync analysis to Outlook for email: {email_schema.subject[:50]}")
+                    logger.warning("Could not connect to Outlook for property sync")
             except Exception as sync_e:
                 logger.error(f"Error syncing analysis to Outlook: {sync_e}")
             
             # Send analysis result
+            logger.info(f"📤 Sending analysis result to frontend: {email_id}")
             await manager.send_to_client(
                 self.websocket,
-                "email:analysis_result",
-                {"email_id": email_id, "analysis": analysis.model_dump()}
+                "email:analyzed",
+                {"email_id": email_id, "analysis": analysis}
             )
+            
+            # Send usage stats update
+            try:
+                usage_stats = {
+                    "calls_today": getattr(claude_client, 'calls_today', 0) + 1,
+                    "last_call": "now",
+                    "status": "active"
+                }
+                await manager.send_to_client(
+                    self.websocket,
+                    "status:usage",
+                    usage_stats
+                )
+            except Exception as usage_e:
+                logger.warning(f"Failed to send usage stats update: {usage_e}")
             
         except Exception as e:
             logger.error(f"Error analyzing email: {e}")
@@ -688,40 +776,95 @@ class WSMessageHandler:
             limit = data.get("limit", 10)
             logger.info(f"Getting recent emails with limit: {limit}")
             
-            # Get recent emails directly from Outlook
+            # Get recent emails directly from Outlook using LEGACY METHOD ONLY
             hybrid_service = cos_orchestrator.email_triage.hybrid_service
             logger.info(f"Hybrid service connection method: {hybrid_service._connection_method}")
             logger.info(f"Hybrid service connected: {hybrid_service._connection_method is not None}")
             
-            emails = await hybrid_service.get_messages("Inbox", limit=limit)
-            logger.info(f"Retrieved {len(emails) if emails else 0} emails from hybrid service")
+            # ALWAYS use COM legacy method directly to ensure COS properties are included
+            if hybrid_service._connection_method == "com" and hybrid_service.com_connector:
+                emails = hybrid_service.com_connector._get_messages_legacy("Inbox", limit)
+                logger.info(f"Retrieved {len(emails) if emails else 0} emails from COM legacy method (includes COS data)")
+            else:
+                # Fallback to hybrid method for non-COM connections
+                emails = await hybrid_service.get_messages("Inbox", limit=limit)
+                logger.info(f"Retrieved {len(emails) if emails else 0} emails from hybrid service fallback")
             
             if emails:
                 from schemas.email_schema import EmailSchema, validate_email_schema
                 
-                # Convert to simple JSON-safe format
+                # Convert to simple JSON-safe format - legacy method already includes COS analysis
                 formatted_emails = []
                 for email_data in emails:
                     try:
-                        # Create simple JSON-safe email object
+                        # Legacy method already includes analysis, just use it directly
+                        body_content_raw = email_data.get("body_content", "")
+                        body_preview_raw = email_data.get("body_preview", "")
+                        
+                        # DEBUG LOGGING FOR BODY CONTENT
+                        logger.info(f"📧 WEBSOCKET BODY DEBUG - Subject: {email_data.get('subject', 'Unknown')[:30]}")
+                        logger.info(f"   Raw body_content length: {len(body_content_raw) if body_content_raw else 0}")
+                        logger.info(f"   Raw body_preview length: {len(body_preview_raw) if body_preview_raw else 0}")
+                        logger.info(f"   Body content type: {type(body_content_raw)}")
+                        if body_content_raw:
+                            logger.info(f"   First 100 chars: {body_content_raw[:100]}")
+                        
                         simple_email = {
                             "id": email_data.get("id", "unknown"),
                             "subject": email_data.get("subject", "No Subject"),
                             "sender_name": email_data.get("sender_name", "Unknown Sender"),
                             "sender_email": email_data.get("sender_email", ""),
-                            "body_preview": email_data.get("body_preview", ""),
+                            "sender": email_data.get("sender", ""),
+                            "to_recipients": email_data.get("to_recipients", []),
+                            "cc_recipients": email_data.get("cc_recipients", []),
+                            "bcc_recipients": email_data.get("bcc_recipients", []),
+                            "body_content": body_content_raw or "",  # Full body content for detail view
+                            "body_preview": body_preview_raw or "",
                             "received_at": str(email_data.get("received_at", "")),
                             "is_read": email_data.get("is_read", False),
-                            "priority": "medium",
-                            "analysis": None
+                            "has_attachments": email_data.get("has_attachments", False),
+                            "importance": email_data.get("importance", "normal"),
+                            "analysis": email_data.get("analysis")  # Legacy method includes this
                         }
+                        
+                        # Extract analysis properties for backward compatibility
+                        analysis = simple_email.get("analysis")
+                        if analysis and isinstance(analysis, dict):
+                            simple_email["priority"] = analysis.get("priority", "Unassessed")
+                            simple_email["tone"] = analysis.get("tone", "Unassessed") 
+                            simple_email["urgency"] = analysis.get("urgency", "Unassessed")
+                            logger.info(f"✅ COS analysis found for {email_data.get('subject', 'Unknown')[:30]}: Priority={analysis.get('priority')}, Tone={analysis.get('tone')}, Urgency={analysis.get('urgency')}")
+                        else:
+                            simple_email["priority"] = "Unassessed"
+                            simple_email["tone"] = "Unassessed" 
+                            simple_email["urgency"] = "Unassessed"
+                            if analysis is not None:
+                                logger.info(f"Analysis not dict for {email_data.get('subject', 'Unknown')[:30]}: {type(analysis)} = {analysis}")
+                        
                         formatted_emails.append(simple_email)
+                        
+                        # Debug body content length
+                        body_content_len = len(simple_email.get("body_content", ""))
+                        body_preview_len = len(simple_email.get("body_preview", ""))
+                        logger.info(f"📧 Email '{simple_email.get('subject', 'No subject')[:30]}': body_content={body_content_len} chars, body_preview={body_preview_len} chars (will send to WebSocket)")
                         
                     except Exception as e:
                         logger.error(f"Failed to process email: {e}")
                         continue
                 
                 logger.info(f"Sending {len(formatted_emails)} emails to frontend")
+                
+                # Log recipient data for debugging
+                for i, email in enumerate(formatted_emails[:2]):  # Log first 2 emails
+                    to_recips = email.get("to_recipients", [])
+                    cc_recips = email.get("cc_recipients", [])
+                    logger.info(f"Email {i+1} recipients debug:")
+                    logger.info(f"  Subject: {email.get('subject', 'No subject')[:40]}")
+                    logger.info(f"  Sender: {email.get('sender', 'No sender')[:40]}")
+                    logger.info(f"  Sender Name: {email.get('sender_name', 'No sender name')[:30]}")
+                    logger.info(f"  TO Recipients ({len(to_recips)}): {to_recips}")
+                    logger.info(f"  CC Recipients ({len(cc_recips)}): {cc_recips}")
+                
                 try:
                     await manager.send_to_client(
                         self.websocket,
@@ -751,6 +894,7 @@ class WSMessageHandler:
                 "email:fetch_error",
                 {"message": f"Failed to get recent emails: {str(e)}"}
             )
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db)):
@@ -858,6 +1002,16 @@ async def debug_prompts():
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+
+@app.get("/api/usage/stats")
+async def get_usage_stats():
+    """Get AI usage statistics for cost monitoring"""
+    return claude_client.get_usage_stats()
+
+@app.post("/api/usage/reset")
+async def reset_usage_stats():
+    """Reset AI usage statistics (admin only)"""
+    return claude_client.reset_usage_stats()
 
 # OAuth callback endpoint for Outlook integration
 @app.get("/auth/callback")

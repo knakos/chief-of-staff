@@ -374,3 +374,67 @@ class DecisionHistory(Base):
         Index('idx_decision_date', 'decision_date'),
         Index('idx_decision_user', 'user_id'),
     )
+
+
+class Email(Base):
+    __tablename__ = "emails"
+    
+    id = Column(String, primary_key=True, default=new_id)
+    thread_id = Column(String)
+    message_id = Column(String)
+    outlook_id = Column(String, index=True, unique=True)
+    subject = Column(String)
+    sender = Column(String, index=True)
+    sender_name = Column(String)
+    
+    # Recipients - separate fields for proper structure
+    recipients = Column(Text)  # Legacy JSON field for backwards compatibility
+    to_recipients = Column(SQLiteJSON)  # List of {name, address} dicts
+    cc_recipients = Column(SQLiteJSON)  # List of {name, address} dicts  
+    bcc_recipients = Column(SQLiteJSON)  # List of {name, address} dicts
+    
+    # Content
+    body_preview = Column(Text)
+    body_content = Column(Text)
+    body_content_type = Column(String, default="text")
+    
+    # Timestamps
+    received_at = Column(DateTime, index=True)
+    sent_at = Column(DateTime)
+    processed_at = Column(DateTime)
+    last_synced_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Status and metadata
+    is_read = Column(Boolean, default=False, index=True)
+    importance = Column(String, default="normal")
+    has_attachments = Column(Boolean, default=False)
+    conversation_id = Column(String, index=True)
+    internet_message_id = Column(String)
+    web_link = Column(String)
+    
+    # COS-specific fields
+    project_id = Column(String, ForeignKey("projects.id"), index=True)
+    confidence = Column(Float)  # Confidence in project linking
+    provenance = Column(String)  # How the project link was determined
+    linked_at = Column(DateTime)
+    status = Column(String, default="unprocessed", index=True)  # unprocessed, processed, archived
+    folder = Column(String)  # Current folder in Outlook
+    
+    # Categories and intelligence
+    categories = Column(SQLiteJSON)  # Outlook categories
+    summary = Column(Text)  # AI-generated summary
+    extracted_tasks = Column(SQLiteJSON)  # Tasks extracted from email
+    suggested_actions = Column(SQLiteJSON)  # AI-suggested actions
+    
+    # Relationships
+    project = relationship("Project", backref="emails")
+    
+    __table_args__ = (
+        Index('idx_email_sender_received', 'sender', 'received_at'),
+        Index('idx_email_project_status', 'project_id', 'status'),
+        Index('idx_email_thread', 'thread_id'),
+        Index('idx_email_conversation', 'conversation_id'),
+        Index('idx_email_folder_status', 'folder', 'status'),
+    )

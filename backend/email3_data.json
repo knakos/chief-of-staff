@@ -1,0 +1,75 @@
+{
+  "id": "000000007C590405EE044F44A726186F4CD6F1B5070071745AF32E8FAA4D8C6A4C7A4307096F000000B6C0CE000010439DF518C57A45B8CCA53E4576E51400044F2BC7560000",
+  "subject": "915 ΕΙΣΗΓΗΤΙΚΑ ΠΡΟΣΛΗΨΕΩΝ",
+  "sender_name": "ΓΕΩΡΓΙΤΖΙΚΗ ΕΛΠΙΔΑ",
+  "sender_email": "",
+  "sender": "/O=EXCHANGELABS/OU=EXCHANGE ADMINISTRATIVE GROUP (FYDIBOHF23SPDLT)/CN=RECIPIENTS/CN=7825C46FC64F430982F8A24B8277B099-USER",
+  "to_recipients": [
+    {
+      "name": "ΜΠΑΜΠΙΟΛΑΚΗ ΦΑΝΗ",
+      "address": "/o=ExchangeLabs/ou=Exchange Administrative Group (FYDIBOHF23SPDLT)/cn=Recipients/cn=user4dc109a3"
+    },
+    {
+      "name": "ΛΑΜΠΑ ΑΙΚΑΤΕΡΙΝΗ",
+      "address": "/o=ExchangeLabs/ou=Exchange Administrative Group (FYDIBOHF23SPDLT)/cn=Recipients/cn=user439645c3"
+    },
+    {
+      "name": "ΓΑΒΡΙΛΗ ΠΑΝΑΓΙΩΤΑ",
+      "address": "/o=ExchangeLabs/ou=Exchange Administrative Group (FYDIBOHF23SPDLT)/cn=Recipients/cn=user3698bfa9"
+    },
+    {
+      "name": "ΚΑΛΟΜΑΛΛΟΥ ΣΟΦΙΑ",
+      "address": "/o=ExchangeLabs/ou=Exchange Administrative Group (FYDIBOHF23SPDLT)/cn=Recipients/cn=userf5ecf198"
+    },
+    {
+      "name": "ΣΙΑΡΚΟΥ ΑΙΚΑΤΕΡΙΝΗ (HR Business Partner)",
+      "address": "/o=ExchangeLabs/ou=Exchange Administrative Group (FYDIBOHF23SPDLT)/cn=Recipients/cn=usercfc744cb"
+    },
+    {
+      "name": "ΚΟΥΛΑ ΑΝΘΟΥΛΑ",
+      "address": "/o=ExchangeLabs/ou=Exchange Administrative Group (FYDIBOHF23SPDLT)/cn=Recipients/cn=c1c5591873d24277a2ffb35fe43fb9bc-c98895f8-a2"
+    },
+    {
+      "name": "ΜΑΥΡΑΓΑΝΗΣ ΘΕΟΔΩΡΟΣ",
+      "address": "/o=ExchangeLabs/ou=Exchange Administrative Group (FYDIBOHF23SPDLT)/cn=Recipients/cn=user531ee846"
+    },
+    {
+      "name": "ΑΛΙΚΑΚΟΥ ΕΛΕΑΝΑ",
+      "address": "/o=ExchangeLabs/ou=Exchange Administrative Group (FYDIBOHF23SPDLT)/cn=Recipients/cn=user79d02a2f"
+    },
+    {
+      "name": "ΡΑΠΤΗ ΜΑΡΙΑ",
+      "address": "/o=ExchangeLabs/ou=Exchange Administrative Group (FYDIBOHF23SPDLT)/cn=Recipients/cn=userf1eed104"
+    }
+  ],
+  "cc_recipients": [
+    {
+      "name": "ΠΑΝΑΓΙΩΤΟΥ ΕΡΝΕΣΤΟΣ",
+      "address": "/o=ExchangeLabs/ou=Exchange Administrative Group (FYDIBOHF23SPDLT)/cn=Recipients/cn=user3b07f34f"
+    },
+    {
+      "name": "ΧΑΤΖΗΙΩΑΝΝΟΥ ΕΥΔΟΞΙΑ",
+      "address": "/o=ExchangeLabs/ou=Exchange Administrative Group (FYDIBOHF23SPDLT)/cn=Recipients/cn=user04d3f07a"
+    },
+    {
+      "name": "ΝΑΚΟΣ ΚΩΝΣΤΑΝΤΙΝΟΣ",
+      "address": "/o=ExchangeLabs/ou=Exchange Administrative Group (FYDIBOHF23SPDLT)/cn=Recipients/cn=506b8eb39253431b91e2e8be271e9e96-knakos"
+    },
+    {
+      "name": "ΓΙΑΝΝΑΚΟΠΟΥΛΟΣ ΝΙΚΟΛΑΟΣ",
+      "address": "/o=ExchangeLabs/ou=Exchange Administrative Group (FYDIBOHF23SPDLT)/cn=Recipients/cn=userce49b044"
+    },
+    {
+      "name": "ΧΑΡΗΣ ΓΕΩΡΓΙΟΣ",
+      "address": "/o=ExchangeLabs/ou=Exchange Administrative Group (FYDIBOHF23SPDLT)/cn=Recipients/cn=userb920ec71"
+    }
+  ],
+  "bcc_recipients": [],
+  "body_preview": "CONFIDENTIAL\r\n\r\n\r\n\r\nΚαλησπέρα σας,\r\n\r\n \r\n\r\nΕύχομαι καλή επάνοδο.\r\n\r\n \r\n\r\nΣε συνέχεια του παρακάτω μηνύματος και της αποδοχής της προφορικής πρότασης συνεργασίας από τον κ. Δραϊνάκη, θα παρακαλούσαμε ν...",
+  "received_at": "2025-09-02 20:18:56.281000+00:00",
+  "is_read": false,
+  "has_attachments": true,
+  "importance": "normal",
+  "priority": "medium",
+  "analysis": null
+}

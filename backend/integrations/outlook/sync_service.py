@@ -3,6 +3,7 @@ Email synchronization service using Microsoft Graph delta queries.
 Efficiently syncs email changes and maintains local state.
 """
 import logging
+import json
 from typing import Dict, List, Optional, Any, AsyncGenerator
 from datetime import datetime, timedelta
 import asyncio
@@ -215,10 +216,53 @@ class EmailSyncService:
         """Extract email data from Graph API message"""
         from_field = message.get("from", {}).get("emailAddress", {})
         
+        # Extract recipients
+        to_recipients = []
+        cc_recipients = []
+        bcc_recipients = []
+        
+        # Process TO recipients
+        to_recips = message.get("toRecipients", [])
+        for recip in to_recips:
+            email_addr = recip.get("emailAddress", {})
+            if email_addr:
+                to_recipients.append({
+                    "name": email_addr.get("name", ""),
+                    "address": email_addr.get("address", "")
+                })
+        
+        # Process CC recipients  
+        cc_recips = message.get("ccRecipients", [])
+        for recip in cc_recips:
+            email_addr = recip.get("emailAddress", {})
+            if email_addr:
+                cc_recipients.append({
+                    "name": email_addr.get("name", ""),
+                    "address": email_addr.get("address", "")
+                })
+        
+        # Process BCC recipients
+        bcc_recips = message.get("bccRecipients", [])
+        for recip in bcc_recips:
+            email_addr = recip.get("emailAddress", {})
+            if email_addr:
+                bcc_recipients.append({
+                    "name": email_addr.get("name", ""),
+                    "address": email_addr.get("address", "")
+                })
+        
+        # Legacy recipients field for backwards compatibility
+        all_recipients = to_recipients + cc_recipients + bcc_recipients
+        recipients_json = json.dumps([{"name": r["name"], "address": r["address"]} for r in all_recipients]) if all_recipients else None
+        
         return {
             "subject": message.get("subject", ""),
             "sender": from_field.get("address", ""),
             "sender_name": from_field.get("name", ""),
+            "recipients": recipients_json,
+            "to_recipients": to_recipients,
+            "cc_recipients": cc_recipients,
+            "bcc_recipients": bcc_recipients,
             "body_preview": message.get("bodyPreview", ""),
             "body_content": message.get("body", {}).get("content", ""),
             "body_content_type": message.get("body", {}).get("contentType", "text"),

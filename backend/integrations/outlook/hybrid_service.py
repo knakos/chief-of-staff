@@ -155,6 +155,7 @@ class HybridOutlookService:
     async def get_messages(self, folder_name: str = "Inbox", limit: int = 50) -> List[Dict[str, Any]]:
         """Get messages using available connection method"""
         if self._connection_method == "com" and self.com_connector:
+            # Use basic synchronous method first (reliable)
             return self.com_connector.get_messages(folder_name, limit)
         elif self._connection_method == "graph":
             try:
@@ -165,6 +166,7 @@ class HybridOutlookService:
                 return []
         else:
             return []
+    
     
     async def setup_gtd_folders(self) -> Dict[str, Any]:
         """Setup GTD folders using available method"""
@@ -263,17 +265,17 @@ class HybridOutlookService:
         """
         try:
             if self._connection_method == "com" and self.com_connector:
-                # Get the Outlook item
+                # ONLY USE LEGACY METHOD - Get Outlook item and use property sync method
                 outlook_item = self.com_connector.namespace.GetItemFromID(email_id)
                 if not outlook_item:
                     logger.warning(f"Could not find Outlook item for email {email_id}")
                     return None
                 
-                # Load with COS data enhancement
+                # Load with COS data enhancement using legacy property sync method
                 from .property_sync import load_email_from_outlook_with_cos_data
                 email_schema = load_email_from_outlook_with_cos_data(outlook_item, self.com_connector)
                 
-                logger.debug(f"Loaded email with COS data: {email_schema.subject[:50]}")
+                logger.debug(f"Loaded email with COS data via legacy property sync: {email_schema.subject[:50]}")
                 return email_schema
                 
             else:

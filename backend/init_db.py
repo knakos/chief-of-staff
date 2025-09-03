@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from models import Base, Area, Project, Task, ContextEntry, Interview
+from models import Base, Area, Project, Task, ContextEntry, Interview, Email
 from claude_client import ClaudeClient
 
 logging.basicConfig(level=logging.INFO)

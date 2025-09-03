@@ -14,47 +14,143 @@ class EmailIntelligenceService:
         """Initialize with Claude client for AI processing"""
         self.claude_client = claude_client
         
-    async def analyze_email(self, email_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Analyze a single email for insights, sentiment, and actions"""
+    async def analyze_email(self, email_data, db=None) -> Dict[str, Any]:
+        """Analyze a single email for insights, priority, tone, urgency, and actions using Claude AI
+        
+        Args:
+            email_data: Either a dict with email data or an email schema object
+            db: Database session (optional, for compatibility)
+        """
         try:
-            analysis = {
-                'priority': 'medium',
-                'sentiment': 'neutral',
-                'action_required': False,
-                'suggested_actions': [],
-                'key_topics': [],
-                'urgency_score': 0.5,
-                'confidence': 0.8
-            }
+            # Handle both dict and schema object inputs
+            if hasattr(email_data, 'subject'):
+                # Schema object
+                subject = email_data.subject or ''
+                sender = email_data.sender_name or email_data.sender or ''
+                body = email_data.body_content or email_data.body_preview or ''
+            else:
+                # Dict object
+                subject = email_data.get('subject', '')
+                sender = email_data.get('sender_name', '') or email_data.get('sender', '')
+                body = email_data.get('body_content', '') or email_data.get('body_preview', '') or email_data.get('preview', '')
             
-            # Basic priority assessment based on subject and sender
-            subject = email_data.get('subject', '').lower()
-            if any(word in subject for word in ['urgent', 'asap', 'immediate']):
-                analysis['priority'] = 'high'
-                analysis['urgency_score'] = 0.9
-            elif any(word in subject for word in ['fyi', 'info', 'update']):
-                analysis['priority'] = 'low'
-                analysis['urgency_score'] = 0.2
+            # Create analysis prompt
+            analysis_prompt = f"""
+Analyze this email for priority, tone, urgency, and provide a thoughtful summary with action recommendations:
+
+SUBJECT: {subject}
+SENDER: {sender}
+CONTENT: {body[:1500]}...
+
+Please provide analysis in this exact JSON format:
+{{
+    "priority": "HIGH|MEDIUM|LOW",
+    "tone": "PROFESSIONAL|CASUAL|URGENT|FRIENDLY|FORMAL|CONCERNED|POSITIVE|NEGATIVE",
+    "urgency": "IMMEDIATE|HIGH|MEDIUM|LOW",
+    "summary": "Brief 2-3 sentence summary of key points and context",
+    "action_required": true/false,
+    "suggested_actions": ["action1", "action2", "action3"],
+    "key_topics": ["topic1", "topic2"],
+    "confidence": 0.85,
+    "reasoning": "Brief explanation of assessment rationale"
+}}
+
+Consider:
+- Sender relationship and context
+- Content urgency indicators
+- Action requirements
+- Professional tone assessment
+- Time sensitivity
+"""
+            
+            # Call Claude for analysis
+            try:
+                claude_response = await self.claude_client.generate_response("system/emailtriage", {}, analysis_prompt)
                 
-            # Basic action detection
-            if any(word in subject for word in ['action', 'request', 'please', 'need']):
-                analysis['action_required'] = True
-                analysis['suggested_actions'] = ['review_and_respond']
+                # Parse Claude's JSON response
+                import json
+                # Extract JSON from response if wrapped in text
+                response_text = claude_response.strip()
+                if '```json' in response_text:
+                    json_start = response_text.find('```json') + 7
+                    json_end = response_text.find('```', json_start)
+                    response_text = response_text[json_start:json_end].strip()
+                elif response_text.startswith('```') and response_text.endswith('```'):
+                    response_text = response_text[3:-3].strip()
                 
-            return analysis
+                analysis = json.loads(response_text)
+                
+                # Ensure required fields and format
+                analysis.setdefault('priority', 'MEDIUM')
+                analysis.setdefault('tone', 'PROFESSIONAL')
+                analysis.setdefault('urgency', 'MEDIUM')
+                analysis.setdefault('summary', 'Email analysis completed')
+                analysis.setdefault('action_required', False)
+                analysis.setdefault('suggested_actions', [])
+                analysis.setdefault('key_topics', [])
+                analysis.setdefault('confidence', 0.8)
+                analysis.setdefault('reasoning', 'AI analysis completed')
+                
+                # Normalize to uppercase for consistency
+                analysis['priority'] = str(analysis['priority']).upper()
+                analysis['tone'] = str(analysis['tone']).upper()
+                analysis['urgency'] = str(analysis['urgency']).upper()
+                
+                logger.info(f"Email analysis completed for: {subject[:50]}")
+                return analysis
+                
+            except Exception as claude_error:
+                logger.error(f"Claude analysis failed: {claude_error}")
+                # Fallback to basic analysis
+                return await self._basic_email_analysis(email_data)
             
         except Exception as e:
             logger.error(f"Failed to analyze email: {e}")
             return {
-                'priority': 'medium',
-                'sentiment': 'neutral', 
+                'priority': 'MEDIUM',
+                'tone': 'PROFESSIONAL',
+                'urgency': 'MEDIUM',
+                'summary': 'Email analysis failed',
                 'action_required': False,
                 'suggested_actions': [],
                 'key_topics': [],
-                'urgency_score': 0.5,
                 'confidence': 0.5,
+                'reasoning': f'Analysis error: {str(e)}',
                 'error': str(e)
             }
+    
+    async def _basic_email_analysis(self, email_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Fallback basic analysis when Claude is unavailable"""
+        subject = email_data.get('subject', '').lower()
+        
+        # Basic priority assessment
+        priority = 'MEDIUM'
+        urgency = 'MEDIUM'
+        tone = 'PROFESSIONAL'
+        
+        if any(word in subject for word in ['urgent', 'asap', 'immediate', 'critical', 'emergency']):
+            priority = 'HIGH'
+            urgency = 'IMMEDIATE'
+            tone = 'URGENT'
+        elif any(word in subject for word in ['fyi', 'info', 'update', 'newsletter']):
+            priority = 'LOW'
+            urgency = 'LOW'
+            
+        # Basic action detection
+        action_required = any(word in subject for word in ['action', 'request', 'please', 'need', 'review', 'approve'])
+        suggested_actions = ['review_and_respond'] if action_required else ['archive']
+        
+        return {
+            'priority': priority,
+            'tone': tone,
+            'urgency': urgency,
+            'summary': f'Basic analysis of email: {email_data.get("subject", "No subject")}',
+            'action_required': action_required,
+            'suggested_actions': suggested_actions,
+            'key_topics': [],
+            'confidence': 0.6,
+            'reasoning': 'Fallback basic analysis used'
+        }
     
     async def analyze_email_batch(self, emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Analyze multiple emails in batch"""

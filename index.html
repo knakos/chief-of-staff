@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <title>Chief of Staff</title>
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' ws://127.0.0.1:8788;">
+        content="default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' ws://127.0.0.1:8787;">
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   
   <!-- Load design system -->
@@ -37,7 +37,8 @@
       display: grid;
       grid-template-columns: 80px minmax(300px, 400px) 1fr;
       grid-template-rows: 1fr auto;
-      min-height: 100vh;
+      height: 100vh;
+      overflow: hidden;
       background: var(--bg-primary);
     }
 
@@ -304,21 +305,26 @@
     .content-area {
       flex: 1;
       padding: 48px;
-      overflow: auto;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 0; /* Ensures flex children can shrink */
     }
 
-    /* Email Intelligence Layout */
+    /* Email Intelligence Layout - Analysis Left, List Right */
     .email-management {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 2fr 1fr;  /* Analysis panel gets more space */
       gap: 24px;
-      height: 100%;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
     }
 
     @media (max-width: 1200px) {
       .email-management {
         grid-template-columns: 1fr;
-        grid-template-rows: 400px 1fr;
+        grid-template-rows: 1fr 300px;  /* Analysis first, then compact email list */
         gap: 16px;
       }
     }
@@ -345,6 +351,8 @@
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      height: 100%;
+      min-height: 0;
     }
 
     .panel-header {
@@ -369,15 +377,20 @@
     .email-list {
       flex: 1;
       overflow-y: auto;
+      background: var(--bg-secondary);
+      border-radius: 12px;
+      padding: 16px;
+      border: 1px solid var(--border);
     }
 
     .email-item {
-      padding: 16px;
+      padding: 12px;
       border: 1px solid var(--border);
       border-radius: 8px;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
       cursor: pointer;
       transition: all 0.2s ease;
+      background: var(--bg-primary);
     }
 
     .email-item:hover {
@@ -471,7 +484,9 @@
     .empty-description {
       margin: 0;
       color: var(--text-muted);
+      font-size: 16px;
       line-height: 1.5;
+      max-width: 400px;
     }
 
     /* Chat interface */
@@ -542,6 +557,52 @@
     .quick-action:hover {
       background: var(--surface-hover, #475569);
       border-color: var(--brand-primary);
+    }
+
+    /* Processing dots animation */
+    .processing-dots {
+      position: absolute;
+      bottom: 8px;
+      right: 12px;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      font-size: 12px;
+      color: var(--brand-primary);
+      font-weight: 600;
+    }
+
+    .dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--brand-primary);
+      animation: pulse 1.5s infinite;
+    }
+
+    .dot:nth-child(2) { animation-delay: 0.2s; }
+    .dot:nth-child(3) { animation-delay: 0.4s; }
+    .dot:nth-child(4) { animation-delay: 0.6s; }
+
+    @keyframes pulse {
+      0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+      40% { opacity: 1; transform: scale(1.2); }
+    }
+
+    /* Assessment flags with uniform height */
+    .assessment-flag {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      text-align: center;
+      min-width: 60px;
+      height: 24px; /* Fixed height */
+      line-height: 1;
+      white-space: nowrap;
     }
 
     .message {
@@ -656,6 +717,51 @@
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
+    /* Context Menu */
+    .context-menu {
+      position: fixed;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 4px 0;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      z-index: 1000;
+      min-width: 180px;
+    }
+
+    .context-menu-item {
+      padding: 8px 16px;
+      cursor: pointer;
+      color: var(--text-primary);
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+    }
+
+    .context-menu-item:hover {
+      background: var(--surface-hover);
+    }
+
+    .context-menu-item:disabled {
+      color: var(--text-muted);
+      cursor: not-allowed;
+    }
+
+    .context-menu-item:disabled:hover {
+      background: none;
+    }
+
+    .context-menu-icon {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+
   </style>
 </head>
 <body>
@@ -743,35 +849,64 @@
       }, [activeRoute]);
       const [connectionStatus, setConnectionStatus] = useState('connecting');
       const [outlookStatus, setOutlookStatus] = useState('disconnected');
+      const [usageStats, setUsageStats] = useState({
+        calls_today: 0,
+        total_calls: 0,
+        estimated_cost: 0.0,
+        cache_hit_rate: 0.0,
+        api_calls: 0,
+        mock_responses: 0
+      });
       const [messages, setMessages] = useState([]);
       const [inputText, setInputText] = useState('');
       const [selectedEmail, setSelectedEmail] = useState(null);
       const [emails, setEmails] = useState([]);
+      const [showFullRecipients, setShowFullRecipients] = useState(false);
+      const [emailsLoading, setEmailsLoading] = useState(false);
+      
+      // Context menu state
+      const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, email: null });
+      
       const wsRef = useRef(null);
       const messagesEndRef = useRef(null);
 
-      // WebSocket connection - TEST
+      // WebSocket connection - Initialize on startup
       useEffect(() => {
         console.log('=== WEBSOCKET USEEFFECT STARTED ===');
+        console.log('🔗 Initializing WebSocket connection on app startup...');
         try {
           console.log('WebSocket useEffect triggered - attempting connection');
-          console.log('Attempting WebSocket connection to ws://127.0.0.1:8788/ws');
-        const ws = new WebSocket('ws://127.0.0.1:8788/ws');
+          console.log('Attempting WebSocket connection to ws://127.0.0.1:8787/ws');
+        const ws = new WebSocket('ws://127.0.0.1:8787/ws');
         wsRef.current = ws;
         // Make WebSocket globally available
         window.ws = ws;
         
         ws.onopen = () => {
           setConnectionStatus('connected');
-          console.log('WebSocket connected successfully');
+          console.log('🔗 WebSocket connected successfully');
           // Request current status update
-          console.log('Requesting backend status...');
+          console.log('📤 Requesting backend status...');
           ws.send(JSON.stringify({
             event: 'status:request',
             data: {}
           }));
-          // Request recent emails
-          console.log('Requesting recent emails from backend...');
+          
+          // Also request recent emails
+          console.log('📤 Requesting recent emails...');
+          setEmailsLoading(true);
+          
+          // Add loading message to chat
+          const loadingMessage = {
+            id: Date.now() + '_loading',
+            text: 'Loading emails...',
+            timestamp: new Date().toISOString(),
+            sender: 'system',
+            isThinking: true,
+            type: 'email_loading'
+          };
+          setMessages(prev => [...prev, loadingMessage]);
+          
           ws.send(JSON.stringify({
             event: 'email:get_recent',
             data: { limit: 50 }
@@ -809,22 +944,120 @@
             } else if (message.event === 'email:recent_list') {
               // Handle recent emails with analysis
               console.log('Received email:recent_list event:', message);
+              
+              // Remove email loading message and update loading state
+              setEmailsLoading(false);
+              setMessages(prev => prev.filter(msg => msg.type !== 'email_loading'));
+              
               if (message.data && message.data.emails) {
                 console.log('Raw email data:', message.data.emails);
-                // Transform the analyzed emails to match our UI format
-                const transformedEmails = message.data.emails.map(item => ({
-                  id: item.id,
-                  subject: item.subject || 'No Subject',
-                  sender: item.sender_name || item.sender_email,
-                  preview: item.body_preview || 'No preview available',
-                  received_at: item.received_at,
-                  priority: item.priority || 'medium',
-                  recommendations: item.analysis?.recommendations || []
-                }));
+                // Transform the analyzed emails to match our UI format - INCLUDE RECIPIENT FIELDS
+                const transformedEmails = message.data.emails.map(item => {
+                  // Check if analysis exists and has been actually assessed
+                  const hasAnalysis = item.analysis && Object.keys(item.analysis).length > 0;
+                  
+                  const email = {
+                    id: item.id,
+                    subject: item.subject || 'No Subject',
+                    sender: item.sender_name || item.sender_email,
+                    preview: item.body_preview || 'No preview available',
+                    received_at: item.received_at,
+                    // Use actual values or 'Unassessed' if no real analysis
+                    priority: hasAnalysis && item.analysis.priority ? item.analysis.priority : 'Unassessed',
+                    tone: hasAnalysis && item.analysis.tone ? item.analysis.tone : 'Unassessed', 
+                    urgency: hasAnalysis && item.analysis.urgency ? item.analysis.urgency : 'Unassessed',
+                    recommendations: item.analysis?.recommendations || [],
+                    // Add recipient fields that were missing
+                    to_recipients: item.to_recipients || [],
+                    cc_recipients: item.cc_recipients || [],
+                    bcc_recipients: item.bcc_recipients || [],
+                    // Also preserve original sender fields for debugging
+                    sender_name: item.sender_name,
+                    sender_email: item.sender_email,
+                    // CRITICAL: Preserve full body content for email detail view
+                    body_content: item.body_content || '',
+                    body_preview: item.body_preview || '',
+                    // Preserve full analysis for detailed view
+                    analysis: item.analysis
+                  };
+                  
+                  // Debug log for first few emails
+                  if (item.id === message.data.emails[0].id || item.id === message.data.emails[1]?.id) {
+                    console.log(`📧 Email "${email.subject.substring(0,30)}..." - Priority: ${email.priority}, Analysis:`, !!item.analysis);
+                  }
+                  
+                  return email;
+                });
                 setEmails(transformedEmails);
+                
+                // Add success message to chat
+                const successMessage = {
+                  id: Date.now() + '_success',
+                  text: `📧 Loaded ${transformedEmails.length} emails successfully`,
+                  timestamp: new Date().toISOString(),
+                  sender: 'system'
+                };
+                setMessages(prev => [...prev, successMessage]);
+                
+                console.log('📧 EMAILS LOADED:', {
+                  count: transformedEmails.length,
+                  sample_email: transformedEmails[0] ? {
+                    id: transformedEmails[0].id,
+                    subject: transformedEmails[0].subject?.substring(0, 50),
+                    has_to_recipients: transformedEmails[0].to_recipients ? transformedEmails[0].to_recipients.length : 0,
+                    has_cc_recipients: transformedEmails[0].cc_recipients ? transformedEmails[0].cc_recipients.length : 0,
+                    keys: Object.keys(transformedEmails[0])
+                  } : 'none'
+                });
                 console.log('Loaded', transformedEmails.length, 'emails from Outlook');
               } else {
                 console.log('No email data in response:', message);
+              }
+            } else if (message.event === 'email:analyzed') {
+              // Handle fresh email analysis result
+              console.log('🔄 Received email:analyzed event:', message);
+              
+              const emailId = message.data.email_id;
+              const newAnalysis = message.data.analysis;
+              
+              if (emailId && newAnalysis) {
+                // Update the emails list with fresh analysis
+                setEmails(prevEmails => prevEmails.map(email => {
+                  if (email.id === emailId) {
+                    console.log('📧 Updating email analysis:', emailId, newAnalysis);
+                    return {
+                      ...email,
+                      priority: newAnalysis.priority || 'Unassessed',
+                      tone: newAnalysis.tone || 'Unassessed',
+                      urgency: newAnalysis.urgency || 'Unassessed',
+                      recommendations: newAnalysis.recommendations || [],
+                      analysis: newAnalysis
+                    };
+                  }
+                  return email;
+                }));
+                
+                // If this is the currently selected email, update selection to refresh summary panel
+                if (selectedEmail && selectedEmail.id === emailId) {
+                  setSelectedEmail(prevSelected => ({
+                    ...prevSelected,
+                    priority: newAnalysis.priority || 'Unassessed',
+                    tone: newAnalysis.tone || 'Unassessed',
+                    urgency: newAnalysis.urgency || 'Unassessed',
+                    recommendations: newAnalysis.recommendations || [],
+                    analysis: newAnalysis
+                  }));
+                  console.log('📊 Updated selected email analysis for summary panel refresh');
+                }
+                
+                // Add success notification to chat
+                const analysisMessage = {
+                  id: Date.now() + '_analysis',
+                  text: `🔄 Analysis updated for: "${emails.find(e => e.id === emailId)?.subject?.substring(0, 50) || 'Email'}" - Priority: ${newAnalysis.priority}, Tone: ${newAnalysis.tone}, Urgency: ${newAnalysis.urgency}`,
+                  timestamp: new Date().toISOString(),
+                  sender: 'system'
+                };
+                setMessages(prev => [...prev, analysisMessage]);
               }
             } else if (message.event === 'status:outlook' || message.event === 'outlook:connected') {
               // Handle outlook status updates
@@ -832,6 +1065,57 @@
                 setOutlookStatus(message.data.status);
               } else if (message.event === 'outlook:connected') {
                 setOutlookStatus('connected');
+              }
+            } else if (message.event === 'status:usage') {
+              // Handle usage statistics updates
+              if (message.data) {
+                setUsageStats(message.data);
+                console.log('Usage stats updated:', message.data);
+              }
+            } else if (message.event === 'email:analyzed') {
+              // Handle email analysis results
+              if (message.data && message.data.email_id) {
+                const analysis = message.data.analysis;
+                console.log('📧 Email analysis received:', analysis);
+                
+                // Extract analysis fields for UI display
+                const analysisUpdate = {
+                  analysis: analysis,
+                  priority: analysis.priority || 'Unassessed',
+                  tone: analysis.tone || 'Unassessed', 
+                  urgency: analysis.urgency || 'Unassessed',
+                  isProcessing: false
+                };
+                
+                console.log('🔍 ANALYSIS UPDATE DEBUG:', {
+                  email_id: message.data.email_id,
+                  analysis_summary: analysis.summary,
+                  analysis_keys: Object.keys(analysis),
+                  full_analysis_update: analysisUpdate
+                });
+                
+                // Update the selected email with analysis results
+                if (selectedEmail && selectedEmail.id === message.data.email_id) {
+                  const updatedEmail = {
+                    ...selectedEmail,
+                    ...analysisUpdate
+                  };
+                  console.log('🔄 UPDATING SELECTED EMAIL:', {
+                    before_analysis: selectedEmail.analysis?.summary,
+                    after_analysis: updatedEmail.analysis?.summary,
+                    analysis_object_keys: updatedEmail.analysis ? Object.keys(updatedEmail.analysis) : 'no analysis'
+                  });
+                  setSelectedEmail(updatedEmail);
+                }
+                // Also update the email in the emails array
+                setEmails(prevEmails => 
+                  prevEmails.map(email => 
+                    email.id === message.data.email_id 
+                      ? { ...email, ...analysisUpdate }
+                      : email
+                  )
+                );
+                console.log('✅ Email analysis updated in UI for:', message.data.email_id);
               }
             }
           } catch (error) {
@@ -853,6 +1137,57 @@
       useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, [messages]);
+
+      // Handle context menu interactions
+      useEffect(() => {
+        const handleClick = () => setContextMenu({ visible: false, x: 0, y: 0, email: null });
+        const handleScroll = () => setContextMenu({ visible: false, x: 0, y: 0, email: null });
+        
+        if (contextMenu.visible) {
+          document.addEventListener('click', handleClick);
+          document.addEventListener('scroll', handleScroll, true);
+          return () => {
+            document.removeEventListener('click', handleClick);
+            document.removeEventListener('scroll', handleScroll, true);
+          };
+        }
+      }, [contextMenu.visible]);
+
+      const handleContextMenuAction = (action, email) => {
+        setContextMenu({ visible: false, x: 0, y: 0, email: null });
+        
+        if (action === 'reprocess' && email && !email.isProcessing) {
+          // Force re-analysis by clearing existing analysis first
+          const emailForReprocessing = { ...email, analysis: null, priority: 'Unassessed' };
+          setSelectedEmail(emailForReprocessing);
+          
+          // Set processing state for both email list and selected email
+          setEmails(prevEmails => 
+            prevEmails.map(e => 
+              e.id === email.id 
+                ? { ...e, isProcessing: true, analysis: null, priority: 'Unassessed' }
+                : e
+            )
+          );
+          setSelectedEmail(prev => prev ? { ...prev, isProcessing: true, analysis: null, priority: 'Unassessed' } : prev);
+          
+          // Send analysis request
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            const message = {
+              event: 'email:analyze',
+              data: {
+                email_id: email.id,
+                subject: email.subject || '',
+                content: email.body_content || email.content || email.preview || '',
+                sender: email.sender || '',
+                sender_name: email.sender_name || ''
+              }
+            };
+            wsRef.current.send(JSON.stringify(message));
+            console.log('🔄 Re-processing email with AI:', email.id);
+          }
+        }
+      };
 
       const sendMessage = () => {
         if (!inputText.trim() || connectionStatus !== 'connected' || !wsRef.current) return;
@@ -889,6 +1224,19 @@
 
       const requestRecentEmails = () => {
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          setEmailsLoading(true);
+          
+          // Add loading message to chat
+          const loadingMessage = {
+            id: Date.now() + '_loading',
+            text: 'Refreshing emails...',
+            timestamp: new Date().toISOString(),
+            sender: 'system',
+            isThinking: true,
+            type: 'email_loading'
+          };
+          setMessages(prev => [...prev, loadingMessage]);
+          
           wsRef.current.send(JSON.stringify({
             event: 'email:get_recent',
             data: { limit: 50 }
@@ -904,7 +1252,49 @@
       };
 
       const handleEmailSelect = (email) => {
+        console.log('🎯 EMAIL SELECTED:', {
+          email_id: email?.id,
+          email_subject: email?.subject,
+          email_keys: email ? Object.keys(email) : 'null',
+          has_recipients: {
+            to_recipients: email?.to_recipients ? email.to_recipients.length : 0,
+            cc_recipients: email?.cc_recipients ? email.cc_recipients.length : 0,
+            bcc_recipients: email?.bcc_recipients ? email.bcc_recipients.length : 0
+          },
+          current_selected: selectedEmail?.id
+        });
         setSelectedEmail(email);
+        
+        // Auto-trigger email analysis if not already analyzed
+        console.log(`🔍 Email selected: "${email?.subject?.substring(0,30)}..." - Priority: ${email?.priority}, Analysis:`, !!email?.analysis);
+        if (email && (!email.analysis || email.priority === 'Unassessed')) {
+          console.log('🔄 Auto-triggering email analysis for:', email.id);
+          
+          // Set processing state for this email in the list
+          setEmails(prevEmails => 
+            prevEmails.map(e => 
+              e.id === email.id 
+                ? { ...e, isProcessing: true }
+                : e
+            )
+          );
+          
+          // Also set processing state for the selected email (for Summary panel)
+          setSelectedEmail(prev => prev ? { ...prev, isProcessing: true } : prev);
+          
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            const message = {
+              event: 'email:analyze',
+              data: { 
+                email_id: email.id,
+                subject: email.subject,
+                content: email.preview || email.body_content || '',
+                sender: email.sender
+              }
+            };
+            wsRef.current.send(JSON.stringify(message));
+          }
+        }
       };
 
       const formatTime = (timestamp) => {
@@ -915,19 +1305,326 @@
         });
       };
 
-      const formatDate = (timestamp) => {
-        const date = new Date(timestamp);
-        const now = new Date();
-        const diffTime = now - date;
-        const diffHours = diffTime / (1000 * 60 * 60);
-        
-        if (diffHours < 24) {
-          return formatTime(timestamp);
-        } else if (diffHours < 48) {
-          return 'Yesterday';
-        } else {
-          return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      // Helper function to get assessment flag colors and text colors
+      const getAssessmentStyle = (type, value) => {
+        // Always show "Unassessed" in grey
+        if (value === 'Unassessed' || !value) {
+          return { 
+            background: '#e5e7eb', 
+            color: '#6b7280',
+            border: '1px solid #d1d5db'
+          };
         }
+        
+        // Make case-insensitive for consistency
+        const lowerValue = value.toLowerCase();
+        
+        // Priority levels: 🟢 Low (green) -> 🟠 Medium (amber) -> 🔴 High (red)
+        if (type === 'priority') {
+          if (lowerValue === 'high') return { background: '#fecaca', color: '#dc2626', border: '1px solid #fca5a5' };
+          if (lowerValue === 'medium') return { background: '#fed7aa', color: '#ea580c', border: '1px solid #fdba74' };
+          if (lowerValue === 'low') return { background: '#bbf7d0', color: '#059669', border: '1px solid #86efac' };
+        }
+        
+        // Urgency levels: 🟢 Low (green) -> 🟠 Medium (amber) -> 🔴 High/Immediate (red)
+        if (type === 'urgency') {
+          if (lowerValue === 'high' || lowerValue === 'urgent' || lowerValue === 'immediate') {
+            return { background: '#fecaca', color: '#dc2626', border: '1px solid #fca5a5' };
+          }
+          if (lowerValue === 'medium' || lowerValue === 'moderate') {
+            return { background: '#fed7aa', color: '#ea580c', border: '1px solid #fdba74' };
+          }
+          if (lowerValue === 'low') {
+            return { background: '#bbf7d0', color: '#059669', border: '1px solid #86efac' };
+          }
+        }
+        
+        // Tone: contextual colors based on tone type
+        if (type === 'tone') {
+          if (lowerValue === 'urgent' || lowerValue === 'aggressive') {
+            return { background: '#fecaca', color: '#dc2626', border: '1px solid #fca5a5' };
+          }
+          if (lowerValue === 'formal' || lowerValue === 'professional') {
+            return { background: '#dbeafe', color: '#2563eb', border: '1px solid #bfdbfe' };
+          }
+          if (lowerValue === 'friendly' || lowerValue === 'casual') {
+            return { background: '#bbf7d0', color: '#059669', border: '1px solid #86efac' };
+          }
+          if (lowerValue === 'neutral') {
+            return { background: '#f3f4f6', color: '#4b5563', border: '1px solid #d1d5db' };
+          }
+          if (lowerValue === 'positive') {
+            return { background: '#bbf7d0', color: '#059669', border: '1px solid #86efac' };
+          }
+          if (lowerValue === 'negative' || lowerValue === 'concerned') {
+            return { background: '#fecaca', color: '#dc2626', border: '1px solid #fca5a5' };
+          }
+          // Other tones get a purple treatment
+          return { background: '#e9d5ff', color: '#7c3aed', border: '1px solid #c4b5fd' };
+        }
+        
+        // Default fallback - grey for unknown values
+        return { background: '#f3f4f6', color: '#4b5563', border: '1px solid #d1d5db' };
+      };
+
+      const formatDate = (timestamp) => {
+        if (!timestamp || timestamp === 'unknown' || timestamp === '') {
+          return 'Unknown date';
+        }
+        
+        const date = new Date(timestamp);
+        
+        // Check if date is invalid
+        if (isNaN(date.getTime())) {
+          return 'Invalid date';
+        }
+        
+        const now = new Date();
+        
+        // Check if it's the same day (today)
+        const isToday = date.toDateString() === now.toDateString();
+        
+        if (isToday) {
+          // Show just time for today's emails
+          return formatTime(timestamp);
+        } else {
+          // Check if it's yesterday
+          const yesterday = new Date(now);
+          yesterday.setDate(now.getDate() - 1);
+          const isYesterday = date.toDateString() === yesterday.toDateString();
+          
+          if (isYesterday) {
+            return `Yesterday ${formatTime(timestamp)}`;
+          } else {
+            // For older emails, show date and time
+            const currentYear = now.getFullYear();
+            const emailYear = date.getFullYear();
+            
+            if (emailYear === currentYear) {
+              // Same year: show "Mon, Jan 15 10:30 AM"
+              return `${date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} ${formatTime(timestamp)}`;
+            } else {
+              // Different year: show "Jan 15, 2024 10:30 AM"
+              return `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${formatTime(timestamp)}`;
+            }
+          }
+        }
+      };
+
+      // Email content processing functions
+      const processEmailContent = (content) => {
+        if (!content) return 'No content available';
+        
+        // Remove HTML tags but preserve text content
+        let processed = content
+          .replace(/<br\s*\/?>/gi, '\n')  // Convert <br> to newlines
+          .replace(/<\/p>/gi, '\n\n')     // Convert </p> to double newlines
+          .replace(/<[^>]*>/g, '');       // Remove all other HTML tags
+        
+        // Replace links with [here] placeholder
+        processed = processed.replace(
+          /(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/gi, 
+          '[here]'
+        );
+        
+        // Decode common HTML entities
+        processed = processed
+          .replace(/&nbsp;/gi, ' ')
+          .replace(/&amp;/gi, '&')
+          .replace(/&lt;/gi, '<')
+          .replace(/&gt;/gi, '>')
+          .replace(/&quot;/gi, '"')
+          .replace(/&#39;/gi, "'");
+        
+        // Clean up extra whitespace and normalize line breaks
+        processed = processed
+          .replace(/\n\s*\n\s*\n/g, '\n\n')  // Reduce multiple line breaks
+          .replace(/^\s+|\s+$/g, '')         // Trim start/end whitespace
+          .replace(/[ \t]+/g, ' ');          // Normalize spaces
+        
+        return processed || 'No readable content available';
+      };
+
+      const processEmailContentWithLinks = (content) => {
+        if (!content) return React.createElement('span', { style: { fontStyle: 'italic', color: 'var(--text-secondary)' } }, 'No content available');
+        
+        // Remove HTML tags but preserve text content
+        let processed = content
+          .replace(/<br\s*\/?>/gi, '\n')  // Convert <br> to newlines
+          .replace(/<\/p>/gi, '\n\n')     // Convert </p> to double newlines
+          .replace(/<[^>]*>/g, '');       // Remove all other HTML tags
+        
+        // Decode common HTML entities
+        processed = processed
+          .replace(/&nbsp;/gi, ' ')
+          .replace(/&amp;/gi, '&')
+          .replace(/&lt;/gi, '<')
+          .replace(/&gt;/gi, '>')
+          .replace(/&quot;/gi, '"')
+          .replace(/&#39;/gi, "'");
+        
+        // Clean up extra whitespace
+        processed = processed
+          .replace(/\n\s*\n\s*\n/g, '\n\n')  // Reduce multiple newlines to double
+          .replace(/^\s+|\s+$/g, '')         // Trim start and end
+          .replace(/\t/g, '  ');            // Convert tabs to spaces
+        
+        // Split content by URLs to create clickable links
+        const urlRegex = /(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/gi;
+        const parts = processed.split(urlRegex);
+        
+        return parts.map((part, index) => {
+          if (urlRegex.test(part)) {
+            return React.createElement('a', {
+              key: index,
+              href: part,
+              target: '_blank',
+              rel: 'noopener noreferrer',
+              style: {
+                color: '#3b82f6',
+                textDecoration: 'underline'
+              }
+            }, '[here]');
+          }
+          return part;
+        });
+      };
+
+      const formatRecipients = (email, showFull = false) => {
+        
+        if (!email) {
+          console.log('❌ No email object provided to formatRecipients');
+          return 'No recipients available';
+        }
+        
+        
+        const sections = [];
+        
+        // Helper functions for recipient formatting
+        const isExchangeAddress = (addr) => {
+          return addr && (addr.startsWith('/o=') || addr.startsWith('/O='));
+        };
+        
+        const getReadableRecipient = (recip) => {
+          // If we have both name and email, show both
+          const hasEmail = recip.email && !isExchangeAddress(recip.email);
+          const hasAddress = recip.address && !isExchangeAddress(recip.address);
+          const actualEmail = hasEmail ? recip.email : (hasAddress ? recip.address : null);
+          
+          if (recip.name && actualEmail) {
+            return `${recip.name} <${actualEmail}>`;
+          }
+          
+          // If we have actual email but no name, show email only
+          if (actualEmail) {
+            return actualEmail;
+          }
+          
+          // If we only have name (Exchange internal address), show name only
+          if (recip.name) {
+            return recip.name;
+          }
+          
+          // Fallback
+          return 'Unknown';
+        };
+        
+        const formatRecipientList = (recipients, showFull, recipientType = 'unknown') => {
+          return recipients.map((recipient, index) => {
+            // Handle if recipient is a string or object
+            if (typeof recipient === 'string') {
+              return recipient;
+            }
+            
+            // Apply toggle logic: showFull controls display format
+            if (showFull) {
+              // Show "Name <email>" format when toggled on
+              const hasEmail = recipient.email && !isExchangeAddress(recipient.email);
+              const hasAddress = recipient.address && !isExchangeAddress(recipient.address);
+              
+              // Try to extract email from Exchange address as fallback
+              let actualEmail = null;
+              if (hasEmail) {
+                actualEmail = recipient.email;
+              } else if (hasAddress) {
+                actualEmail = recipient.address;
+              } else if (recipient.address && isExchangeAddress(recipient.address)) {
+                // Extract username from Exchange address and create likely email
+                const match = recipient.address.match(/cn=([a-zA-Z0-9\-]+)/);
+                if (match && match[1]) {
+                  const cnValue = match[1];
+                  // Try to extract meaningful username from CN value
+                  let username = null;
+                  
+                  // Check for known pattern: UUID-username (like 506b8eb39253431b91e2e8be271e9e96-knakos)
+                  const uuidUsernameMatch = cnValue.match(/^[a-f0-9]{8,}-(.+)$/);
+                  if (uuidUsernameMatch && uuidUsernameMatch[1]) {
+                    username = uuidUsernameMatch[1];
+                  } 
+                  // Check for direct username pattern (like user12345 or knakos)
+                  else if (cnValue.match(/^(user[a-z0-9]+|[a-z]+[a-z0-9]*)$/i)) {
+                    username = cnValue.replace(/^user/, ''); // Remove 'user' prefix if present
+                  }
+                  
+                  if (username && username.length > 2) {
+                    actualEmail = `${username}@nbg.gr`;
+                  }
+                }
+              }
+              
+              
+              if (recipient.name && actualEmail) {
+                return `${recipient.name} <${actualEmail}>`;
+              } else if (actualEmail) {
+                return actualEmail;
+              } else {
+                return recipient.name || 'Unknown';
+              }
+            } else {
+              // Show just name when toggled off
+              return recipient.name || recipient.email || recipient.address || 'Unknown';
+            }
+          }).join(', ');
+        };
+        
+        // Handle To recipients
+        const toRecipients = email.to_recipients || email.recipients || email.to || [];
+        
+        if (toRecipients && toRecipients.length > 0) {
+          const toList = formatRecipientList(toRecipients, showFull, 'to');
+          sections.push(`To: ${toList}`);
+        }
+        
+        // Handle Cc recipients
+        const ccRecipients = email.cc_recipients || email.cc || [];
+        
+        if (ccRecipients && ccRecipients.length > 0) {
+          const ccList = formatRecipientList(ccRecipients, showFull, 'cc');
+          sections.push(`Cc: ${ccList}`);
+        }
+        
+        // Handle Bcc recipients (if available)
+        const bccRecipients = email.bcc_recipients || email.bcc || [];
+        if (bccRecipients && bccRecipients.length > 0) {
+          const bccList = formatRecipientList(bccRecipients, showFull, 'bcc');
+          sections.push(`Bcc: ${bccList}`);
+        }
+        
+        
+        // If no recipients found, show appropriate message without sender information
+        if (sections.length === 0) {
+          const availableFields = Object.keys(email).filter(key => 
+            key.toLowerCase().includes('recipient') || 
+            key.toLowerCase().includes('to') || 
+            key.toLowerCase().includes('cc') ||
+            key.toLowerCase().includes('bcc')
+          );
+          console.log('❌ No recipients sections created. Available email fields:', availableFields);
+          console.log('🚨 PROBLEM: Will return "Recipients not available"');
+          return 'Recipients not available';
+        }
+        
+        return sections.join('\n');
       };
 
       // Navigation items with SVG icons
@@ -1093,17 +1790,20 @@
               }),
               React.createElement('span', { key: 'text' }, `Backend ${connectionStatus}`)
             ]),
-            // AI Status
+            // AI Status with Usage
             React.createElement('div', { 
               key: 'ai', 
               className: 'status-indicator ai',
-              'data-label': 'AI'
+              'data-label': 'AI',
+              title: `Today: ${usageStats.calls_today || 0} calls (${usageStats.api_calls || 0} API, ${usageStats.mock_responses || 0} mock, ${(usageStats.cache_hit_rate || 0).toFixed(1)}% cache hit rate) | Cost: $${(usageStats.estimated_cost || 0).toFixed(4)}`
             }, [
               React.createElement('div', {
                 key: 'dot',
                 className: 'status-dot connected'
               }),
-              React.createElement('span', { key: 'text' }, 'Anthropic | Claude-3.5-Sonnet')
+              React.createElement('span', { key: 'text' }, 
+                `Claude-3.5 | ${usageStats.calls_today || 0} calls | $${(usageStats.estimated_cost || 0).toFixed(4)}`
+              )
             ]),
             // Outlook Status
             React.createElement('div', { 
@@ -1125,6 +1825,7 @@
       };
 
       const renderEmailList = () => {
+        
         return React.createElement('div', { className: 'email-panel' }, [
           React.createElement('div', { key: 'header', className: 'panel-header' }, [
             React.createElement('h2', { key: 'title', className: 'panel-title' }, 'Smart Email List'),
@@ -1132,25 +1833,96 @@
               `${emails.length} emails with AI-powered insights`
             )
           ]),
-          React.createElement('div', { key: 'list', className: 'email-list' },
+          React.createElement('div', { 
+            key: 'list', 
+            className: 'email-list',
+            style: {
+              maxHeight: '60vh',
+              overflowY: 'auto',
+              overflowX: 'hidden',
+              paddingRight: '4px'
+            }
+          },
             emails.map(email =>
               React.createElement('div', {
                 key: email.id,
                 className: `email-item ${selectedEmail?.id === email.id ? 'selected' : ''}`,
-                onClick: () => handleEmailSelect(email)
+                onClick: () => handleEmailSelect(email),
+                onContextMenu: (e) => {
+                  e.preventDefault();
+                  setContextMenu({
+                    visible: true,
+                    x: e.clientX,
+                    y: e.clientY,
+                    email: email
+                  });
+                },
+                style: {
+                  padding: '8px 12px',
+                  marginBottom: '4px',
+                  lineHeight: '1.3',
+                  position: 'relative',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  minHeight: '80px'
+                }
               }, [
-                React.createElement('div', { key: 'meta', className: 'email-meta' }, [
+                React.createElement('div', { 
+                  key: 'meta', 
+                  className: 'email-meta',
+                  style: {
+                    marginBottom: '2px',
+                    fontSize: '12px'
+                  }
+                }, [
                   React.createElement('span', { key: 'sender', className: 'email-sender' }, email.sender),
                   React.createElement('span', { key: 'time', className: 'email-time' }, formatDate(email.received_at))
                 ]),
-                React.createElement('div', { key: 'subject', className: 'email-subject' }, email.subject),
-                React.createElement('div', { key: 'preview', className: 'email-preview' }, 
-                  email.preview.substring(0, 120) + (email.preview.length > 120 ? '...' : '')
-                ),
-                React.createElement('span', {
-                  key: 'priority',
-                  className: `email-priority priority-${email.priority}`
-                }, `${email.priority} priority`)
+                React.createElement('div', { 
+                  key: 'subject', 
+                  className: 'email-subject',
+                  style: {
+                    margin: '2px 0',
+                    fontSize: '14px',
+                    fontWeight: '500'
+                  }
+                }, email.subject),
+                React.createElement('div', {
+                  key: 'flags',
+                  style: {
+                    marginTop: 'auto',
+                    paddingTop: '4px',
+                    display: 'flex',
+                    gap: '6px',
+                    flexWrap: 'wrap',
+                    alignItems: 'flex-end'
+                  }
+                }, [
+                  React.createElement('span', {
+                    key: 'priority',
+                    className: `assessment-flag email-priority priority-${email.priority.toLowerCase()}`,
+                    style: getAssessmentStyle('priority', email.priority)
+                  }, (email.priority === 'Unassessed' ? 'PRIORITY' : email.priority.toUpperCase())),
+                  React.createElement('span', {
+                    key: 'tone',
+                    className: `assessment-flag email-tone tone-${(email.tone || 'unassessed').toLowerCase()}`,
+                    style: getAssessmentStyle('tone', email.tone || 'Unassessed')
+                  }, ((email.tone || 'Unassessed') === 'Unassessed' ? 'TONE' : (email.tone || 'Unassessed').toUpperCase())),
+                  React.createElement('span', {
+                    key: 'urgency',
+                    className: `assessment-flag email-urgency urgency-${(email.urgency || 'unassessed').toLowerCase()}`,
+                    style: getAssessmentStyle('urgency', email.urgency || 'Unassessed')
+                  }, ((email.urgency || 'Unassessed') === 'Unassessed' ? 'URGENCY' : (email.urgency || 'Unassessed').toUpperCase()))
+                ]),
+                // Processing dots indicator
+                email.isProcessing ? React.createElement('div', {
+                  key: 'processing',
+                  className: 'processing-dots'
+                }, [
+                  React.createElement('div', { key: 'dot1', className: 'dot' }),
+                  React.createElement('div', { key: 'dot2', className: 'dot' }),
+                  React.createElement('div', { key: 'dot3', className: 'dot' })
+                ]) : null
               ])
             )
           )
@@ -1158,6 +1930,20 @@
       };
 
       const renderEmailDetail = () => {
+        console.log('🖼️ RENDERING EMAIL DETAIL:', {
+          has_selected_email: !!selectedEmail,
+          selected_email_id: selectedEmail?.id,
+          selected_email_subject: selectedEmail?.subject,
+          body_content_length: selectedEmail?.body_content?.length || 0,
+          body_length: selectedEmail?.body?.length || 0,
+          preview_length: selectedEmail?.preview?.length || 0,
+          available_fields: selectedEmail ? Object.keys(selectedEmail) : [],
+          isProcessing: selectedEmail?.isProcessing,
+          hasAnalysis: !!selectedEmail?.analysis,
+          summaryText: selectedEmail?.analysis?.summary,
+          analysisKeys: selectedEmail?.analysis ? Object.keys(selectedEmail.analysis) : []
+        });
+        
         if (!selectedEmail) {
           return React.createElement('div', { className: 'email-panel' }, [
             React.createElement('div', { key: 'empty', className: 'email-detail-empty' }, [
@@ -1169,82 +1955,174 @@
               ),
               React.createElement('h3', { key: 'title', className: 'empty-title' }, 'Smart Email Intelligence'),
               React.createElement('p', { key: 'desc', className: 'empty-description' }, 
-                'Select an email to see AI-powered analysis and context-aware recommendations.'
+                'Select an email from the right panel to see AI-powered analysis and context-aware recommendations.'
               )
             ])
           ]);
         }
 
-        const analysis = selectedEmail.analysis;
+        const analysis = selectedEmail.analysis || {};
+        
+        // Provide default analysis structure if not available
+        const defaultAnalysis = {
+          key_points: ['Email analysis not yet available'],
+          tone: 'neutral',
+          urgency_level: 'medium',
+          requires_action: false,
+          recommendations: [{
+            action: 'Analyze Email',
+            confidence: 0.9,
+            description: 'Generate AI analysis for this email'
+          }]
+        };
+        
+        const finalAnalysis = analysis.key_points ? analysis : defaultAnalysis;
+        
         return React.createElement('div', { className: 'email-panel' }, [
           React.createElement('div', { key: 'header', className: 'panel-header' }, [
-            React.createElement('h2', { key: 'title', className: 'panel-title' }, selectedEmail.subject),
+            React.createElement('h2', { key: 'title', className: 'panel-title' }, selectedEmail.subject || 'No Subject'),
             React.createElement('p', { key: 'subtitle', className: 'panel-subtitle' }, 
-              `From: ${selectedEmail.sender} • ${formatTime(selectedEmail.received_at)}`
+              `From: ${selectedEmail.sender || 'Unknown'} • ${selectedEmail.received_at ? formatTime(selectedEmail.received_at) : 'Unknown date'}`
             )
           ]),
-          React.createElement('div', { key: 'content', style: { flex: 1, overflow: 'auto' } }, [
-            React.createElement('div', { key: 'preview', style: { marginBottom: '24px', padding: '16px', background: 'var(--bg-tertiary)', borderRadius: '8px' } }, [
-              React.createElement('h4', { key: 'title', style: { margin: '0 0 8px 0', color: 'var(--text-primary)' } }, 'Email Content'),
-              React.createElement('p', { key: 'content', style: { margin: '0', color: 'var(--text-secondary)', lineHeight: '1.5' } }, selectedEmail.preview)
+          React.createElement('div', { key: 'recipients', style: { marginBottom: '20px', padding: '12px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border)' } }, [
+            React.createElement('div', { key: 'header', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' } }, [
+              React.createElement('h4', { key: 'title', style: { margin: '0', fontSize: '14px', color: 'var(--text-primary)', fontWeight: '600' } }, 'Recipients'),
+              React.createElement('button', {
+                key: 'toggle',
+                style: {
+                  padding: '4px 8px',
+                  background: 'transparent',
+                  border: '1px solid var(--border)',
+                  borderRadius: '4px',
+                  fontSize: '11px',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                },
+                onMouseEnter: (e) => {
+                  e.target.style.background = 'var(--surface-hover)';
+                  e.target.style.borderColor = 'var(--brand-primary)';
+                },
+                onMouseLeave: (e) => {
+                  e.target.style.background = 'transparent';
+                  e.target.style.borderColor = 'var(--border)';
+                },
+                onClick: () => setShowFullRecipients(!showFullRecipients)
+              }, showFullRecipients ? 'Names Only' : 'Names + Emails')
             ]),
-            React.createElement('div', { key: 'analysis', style: { marginBottom: '24px' } }, [
-              React.createElement('h4', { key: 'title', style: { margin: '0 0 12px 0', color: 'var(--text-primary)' } }, 'AI Analysis'),
-              React.createElement('div', { key: 'points', style: { marginBottom: '16px' } }, [
-                React.createElement('h5', { key: 'title', style: { margin: '0 0 8px 0', fontSize: '14px', color: 'var(--text-secondary)' } }, 'Key Points:'),
-                React.createElement('ul', { key: 'list', style: { margin: '0', paddingLeft: '20px', color: 'var(--text-primary)' } },
-                  analysis.key_points.map((point, idx) =>
-                    React.createElement('li', { key: idx, style: { marginBottom: '4px' } }, point)
-                  )
-                )
-              ]),
-              React.createElement('div', { key: 'meta', style: { display: 'flex', gap: '16px', fontSize: '14px' } }, [
-                React.createElement('span', { key: 'tone', style: { color: 'var(--text-secondary)' } }, `Tone: ${analysis.tone}`),
-                React.createElement('span', { key: 'urgency', style: { color: 'var(--text-secondary)' } }, `Urgency: ${analysis.urgency_level}`),
-                React.createElement('span', { key: 'action', style: { color: analysis.requires_action ? 'var(--warning)' : 'var(--success)' } }, 
-                  analysis.requires_action ? 'Action Required' : 'No Action Needed'
-                )
-              ])
-            ]),
-            React.createElement('div', { key: 'recommendations' }, [
-              React.createElement('h4', { key: 'title', style: { margin: '0 0 12px 0', color: 'var(--text-primary)' } }, 'Recommended Actions'),
-              React.createElement('div', { key: 'actions', style: { display: 'flex', flexDirection: 'column', gap: '8px' } },
-                analysis.recommendations.map((rec, idx) =>
-                  React.createElement('button', {
-                    key: idx,
-                    style: {
-                      padding: '12px 16px',
-                      background: 'var(--bg-tertiary)',
-                      border: '1px solid var(--border)',
-                      borderRadius: '8px',
-                      color: 'var(--text-primary)',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      transition: 'all 0.2s ease'
-                    },
-                    onMouseEnter: (e) => {
-                      e.target.style.background = 'var(--surface-hover)';
-                      e.target.style.borderColor = 'var(--brand-primary)';
-                    },
-                    onMouseLeave: (e) => {
-                      e.target.style.background = 'var(--bg-tertiary)';
-                      e.target.style.borderColor = 'var(--border)';
-                    },
-                    onClick: () => {
-                      alert(`Action: ${rec.action}\nRationale: ${rec.rationale}\nConfidence: ${Math.round(rec.confidence * 100)}%`);
-                    }
-                  }, [
-                    React.createElement('div', { key: 'action', style: { fontWeight: '500', marginBottom: '4px', textTransform: 'capitalize' } }, 
-                      rec.action.replace('_', ' ')
-                    ),
-                    React.createElement('div', { key: 'rationale', style: { fontSize: '13px', color: 'var(--text-secondary)' } }, rec.rationale),
-                    React.createElement('div', { key: 'confidence', style: { fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' } }, 
-                      `Confidence: ${Math.round(rec.confidence * 100)}%`
-                    )
+            React.createElement('div', { 
+              key: `recipient-list-${showFullRecipients}`, 
+              style: { 
+                margin: '0', 
+                fontSize: '13px', 
+                color: 'var(--text-secondary)', 
+                lineHeight: '1.4',
+                wordBreak: 'break-word',
+                whiteSpace: 'pre-line'
+              } 
+            }, formatRecipients(selectedEmail, showFullRecipients))
+          ]),
+          // Summary Panel with Processing States
+          React.createElement('div', { key: 'summary', style: { marginBottom: '20px', padding: '16px', background: '#fdf2f8', borderRadius: '8px', border: '1px solid #f9a8d4' } }, [
+            React.createElement('h4', { key: 'title', style: { margin: '0 0 12px 0', fontSize: '14px', color: 'var(--text-primary)', fontWeight: '600' } }, 'Summary'),
+            React.createElement('div', { 
+              key: 'content', 
+              style: { 
+                fontSize: '14px',
+                color: 'var(--text-primary)',
+                lineHeight: '1.5',
+                fontStyle: selectedEmail.analysis?.summary ? 'normal' : 'italic',
+                minHeight: '40px',
+                display: 'flex',
+                alignItems: 'center'
+              } 
+            }, 
+              selectedEmail.isProcessing ? 
+                React.createElement('div', {
+                  key: 'processing',
+                  style: { display: 'flex', alignItems: 'center', gap: '8px' }
+                }, [
+                  React.createElement('span', { key: 'text' }, 'Generating summary'),
+                  React.createElement('div', { key: 'dots', className: 'processing-dots' }, [
+                    React.createElement('div', { key: 'dot1' }),
+                    React.createElement('div', { key: 'dot2' }),
+                    React.createElement('div', { key: 'dot3' })
                   ])
-                )
-              )
-            ])
+                ])
+                : selectedEmail.analysis?.summary || 'No AI summary available. Right-click this email to generate analysis.'
+            )
+          ]),
+          React.createElement('div', { key: 'content', style: { flex: 1, display: 'flex', flexDirection: 'column' } }, [
+            React.createElement('div', { 
+              key: 'preview', 
+              style: { 
+                flex: 1,
+                padding: '16px', 
+                background: 'var(--bg-tertiary)', 
+                borderRadius: '8px', 
+                display: 'flex', 
+                flexDirection: 'column',
+                position: 'relative',
+                minHeight: 0
+              },
+              onContextMenu: (e) => {
+                e.preventDefault();
+                if (wsRef.current) {
+                  const message = {
+                    event: 'email:analyze',
+                    data: { 
+                      email_id: selectedEmail.id,
+                      subject: selectedEmail.subject,
+                      content: selectedEmail.preview || selectedEmail.body,
+                      sender: selectedEmail.sender
+                    }
+                  };
+                  wsRef.current.send(JSON.stringify(message));
+                  console.log('🔄 Renewing email analysis via right-click:', message);
+                }
+              },
+              title: 'Right-click to renew AI analysis'
+            }, [
+              React.createElement('h4', { key: 'title', style: { margin: '0 0 8px 0', fontSize: '14px', color: 'var(--text-primary)', fontWeight: '600' } }, 'Body'),
+              React.createElement('div', { 
+                key: 'content', 
+                style: { 
+                  flex: 1,
+                  margin: '0',
+                  color: 'var(--text-primary)', 
+                  lineHeight: '1.6',
+                  fontSize: '14px',
+                  fontWeight: 'normal',
+                  fontFamily: 'system-ui, -apple-system, sans-serif',
+                  whiteSpace: 'pre-wrap',
+                  overflowY: 'auto',
+                  overflowX: 'hidden',
+                  padding: '8px 12px',
+                  border: '1px solid var(--border)',
+                  borderRadius: '4px',
+                  minHeight: '200px',
+                  maxHeight: '400px',
+                  backgroundColor: 'var(--bg-primary)'
+                } 
+              }, (() => {
+                const content = selectedEmail.body_content || selectedEmail.body || selectedEmail.content || selectedEmail.text_content || selectedEmail.preview || '';
+                console.log('📧 EMAIL BODY CONTENT BEING DISPLAYED:', {
+                  body_content_length: selectedEmail.body_content?.length || 0,
+                  body_length: selectedEmail.body?.length || 0,
+                  content_length: selectedEmail.content?.length || 0,
+                  text_content_length: selectedEmail.text_content?.length || 0,
+                  preview_length: selectedEmail.preview?.length || 0,
+                  using_content_type: selectedEmail.body_content ? 'body_content' : 
+                                     selectedEmail.body ? 'body' :
+                                     selectedEmail.content ? 'content' :
+                                     selectedEmail.text_content ? 'text_content' :
+                                     selectedEmail.preview ? 'preview' : 'empty',
+                  first_100_chars: content.substring(0, 100)
+                });
+                return processEmailContentWithLinks(content);
+              })())
+            ]),
           ])
         ]);
       };
@@ -1252,8 +2130,8 @@
       const renderMainContent = () => {
         if (activeRoute === 'emails') {
           return React.createElement('div', { key: 'emails', className: 'email-management' }, [
-            React.createElement('div', { key: 'email-list-container' }, renderEmailList()),
-            React.createElement('div', { key: 'email-detail-container' }, renderEmailDetail())
+            React.createElement('div', { key: `email-detail-container-${showFullRecipients}` }, renderEmailDetail()),
+            React.createElement('div', { key: 'email-list-container' }, renderEmailList())
           ]);
         } else {
           // For other routes, show placeholder content
@@ -1292,7 +2170,14 @@
         }
       };
 
-      console.log('Rendering main app...');
+      console.log('🚀 STARTING APP - Rendering main app...');
+      console.log('📊 APP STATE:', {
+        activeRoute,
+        connectionStatus,
+        emails_count: emails.length,
+        selectedEmail_id: selectedEmail?.id
+      });
+      
       return React.createElement('div', { className: 'app-layout' }, [
         React.cloneElement(renderIconSidebar(), { key: 'icon-sidebar' }),
         React.cloneElement(renderChatSidebar(), { key: 'chat-sidebar' }),
@@ -1301,7 +2186,48 @@
             React.cloneElement(renderMainContent(), { key: 'main-content' })
           ])
         ]),
-        React.cloneElement(renderStatusBar(), { key: 'status-bar' })
+        React.cloneElement(renderStatusBar(), { key: 'status-bar' }),
+        
+        // Context Menu
+        contextMenu.visible && React.createElement('div', {
+          key: 'context-menu',
+          className: 'context-menu',
+          style: {
+            left: contextMenu.x + 'px',
+            top: contextMenu.y + 'px'
+          },
+          onClick: (e) => e.stopPropagation()
+        }, [
+          React.createElement('button', {
+            key: 'reprocess',
+            className: 'context-menu-item',
+            disabled: contextMenu.email?.isProcessing,
+            onClick: () => handleContextMenuAction('reprocess', contextMenu.email)
+          }, [
+            React.createElement('svg', {
+              key: 'icon',
+              className: 'context-menu-icon',
+              viewBox: '0 0 24 24',
+              fill: 'none',
+              stroke: 'currentColor',
+              strokeWidth: 2
+            }, [
+              React.createElement('path', {
+                key: 'path',
+                d: 'M21 12c0 1.66-4.03 3-9 3s-9-1.34-9-3'
+              }),
+              React.createElement('path', {
+                key: 'path2', 
+                d: 'M3 5c0-1.66 4.03-3 9-3s9 1.34 9 3v7c0 1.66-4.03 3-9 3s-9-1.34-9-3V5z'
+              }),
+              React.createElement('polyline', {
+                key: 'polyline',
+                points: '9 11 12 14 22 4'
+              })
+            ]),
+            React.createElement('span', { key: 'text' }, 'Re-process with AI')
+          ])
+        ])
       ]);
     }
 
