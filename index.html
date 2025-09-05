@@ -26,20 +26,42 @@
     html, body, #root {
       margin: 0;
       padding: 0;
-      height: 100%;
+      height: 100vh;
       font-family: var(--font-family);
       background: var(--bg-primary);
       color: var(--text-primary);
+      overflow: hidden;
     }
 
     /* App layout */
     .app-layout {
       display: grid;
       grid-template-columns: 80px minmax(300px, 400px) 1fr;
-      grid-template-rows: 1fr auto;
+      grid-template-rows: 1px 1fr auto 1px;
       height: 100vh;
+      width: 100vw;
       overflow: hidden;
       background: var(--bg-primary);
+      position: fixed;
+      top: 0;
+      left: 0;
+    }
+
+    /* Top and bottom borders spanning all columns */
+    .app-layout::before,
+    .app-layout::after {
+      content: '';
+      grid-column: 1 / -1;
+      background: var(--border);
+      height: 1px;
+    }
+
+    .app-layout::before {
+      grid-row: 1;
+    }
+
+    .app-layout::after {
+      grid-row: 4;
     }
 
     @media (max-width: 1024px) {
@@ -66,7 +88,7 @@
     /* Status bar */
     .status-bar {
       grid-column: 1 / -1;
-      grid-row: 2;
+      grid-row: 3;
       background: var(--bg-tertiary);
       border-top: 1px solid var(--border);
       padding: 8px 24px;
@@ -187,11 +209,12 @@
       border-right: 1px solid var(--border);
       display: flex;
       flex-direction: column;
+      height: 100%;
       overflow: hidden;
     }
 
     .chat-header {
-      padding: 24px;
+      padding: 16px 24px;
       border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
@@ -298,7 +321,7 @@
     .main-content {
       display: flex;
       flex-direction: column;
-      height: 100vh;
+      height: 100%;
       overflow: hidden;
     }
 
@@ -676,10 +699,39 @@
     }
 
     .message.thinking .message-content {
-      background: var(--surface);
+      background: none !important;
       color: var(--text-muted);
       opacity: 0.7;
-      font-style: italic;
+      font-style: normal;
+      text-align: left !important;
+      padding: 0;
+      border-radius: 0;
+    }
+
+    .message.agent .message-content {
+      background: var(--surface);
+      color: var(--text-primary);
+    }
+
+    /* Status messages should appear as plain text like thinking messages */
+    .message.status .message-content {
+      background: none !important;
+      color: var(--text-muted) !important;
+      opacity: 0.7 !important;
+      font-style: normal !important;
+      text-align: left !important;
+      padding: 0 !important;
+      border-radius: 0 !important;
+    }
+
+    .message.thinking {
+      align-items: flex-start !important;
+      text-align: left !important;
+      justify-content: flex-start !important;
+    }
+
+    .message.thinking * {
+      text-align: left !important;
     }
 
     .message-time {
@@ -879,11 +931,6 @@
     function ChiefOfStaffApp() {
       console.log('ChiefOfStaffApp component initializing...');
       const [activeRoute, setActiveRoute] = useState('inbox');
-      
-      // Debug route changes
-      useEffect(() => {
-        console.log('Route changed to:', activeRoute);
-      }, [activeRoute]);
       const [connectionStatus, setConnectionStatus] = useState('connecting');
       const [outlookStatus, setOutlookStatus] = useState('disconnected');
       const [usageStats, setUsageStats] = useState({
@@ -907,6 +954,43 @@
       const wsRef = useRef(null);
       const messagesEndRef = useRef(null);
 
+      // Function to load recent emails
+      const requestRecentEmails = () => {
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          setEmailsLoading(true);
+          
+          // Add loading message to chat
+          const loadingMessage = {
+            id: Date.now() + '_loading',
+            text: 'Loading emails...',
+            timestamp: new Date().toISOString(),
+            sender: 'system',
+            isThinking: true,
+            type: 'email_loading'
+          };
+          setMessages(prev => [...prev, loadingMessage]);
+          
+          // Clear emails list for gradual loading
+          setEmails([]);
+          
+          wsRef.current.send(JSON.stringify({
+            event: 'email:get_recent',
+            data: { limit: 50, batch_size: 10 }
+          }));
+        }
+      };
+
+      // Handle route changes and load emails when needed
+      useEffect(() => {
+        console.log('Route changed to:', activeRoute);
+        
+        // Load emails when user navigates to emails route and emails haven't been loaded yet
+        if (activeRoute === 'emails' && emails.length === 0 && !emailsLoading) {
+          console.log('📧 User navigated to emails - loading emails...');
+          requestRecentEmails();
+        }
+      }, [activeRoute, emails.length, emailsLoading]);
+
       // WebSocket connection - Initialize on startup
       useEffect(() => {
         console.log('=== WEBSOCKET USEEFFECT STARTED ===');
@@ -927,29 +1011,6 @@
           ws.send(JSON.stringify({
             event: 'status:request',
             data: {}
-          }));
-          
-          // Also request recent emails
-          console.log('📤 Requesting recent emails...');
-          setEmailsLoading(true);
-          
-          // Add loading message to chat
-          const loadingMessage = {
-            id: Date.now() + '_loading',
-            text: 'Loading emails...',
-            timestamp: new Date().toISOString(),
-            sender: 'system',
-            isThinking: true,
-            type: 'email_loading'
-          };
-          setMessages(prev => [...prev, loadingMessage]);
-          
-          // Clear emails list for gradual loading
-          setEmails([]);
-          
-          ws.send(JSON.stringify({
-            event: 'email:get_recent',
-            data: { limit: 50, batch_size: 10 }
           }));
         };
         
@@ -1014,7 +1075,8 @@
                     id: Date.now() + '_completed',
                     text: progressMessage || `✅ Loaded all ${total} emails successfully`,
                     timestamp: new Date().toISOString(),
-                    sender: 'system'
+                    sender: 'system',
+                    isStatus: true
                   };
                   setMessages(prev => [...prev, completionMessage]);
                 }
@@ -1114,7 +1176,8 @@
                   id: Date.now() + '_success',
                   text: `📧 Loaded ${transformedEmails.length} emails successfully`,
                   timestamp: new Date().toISOString(),
-                  sender: 'system'
+                  sender: 'system',
+                  isStatus: true
                 };
                 setMessages(prev => [...prev, successMessage]);
                 
@@ -1375,30 +1438,6 @@
         setInputText('');
       };
 
-      const requestRecentEmails = () => {
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          setEmailsLoading(true);
-          
-          // Add loading message to chat
-          const loadingMessage = {
-            id: Date.now() + '_loading',
-            text: 'Refreshing emails...',
-            timestamp: new Date().toISOString(),
-            sender: 'system',
-            isThinking: true,
-            type: 'email_loading'
-          };
-          setMessages(prev => [...prev, loadingMessage]);
-          
-          // Clear emails list for gradual loading
-          setEmails([]);
-          
-          wsRef.current.send(JSON.stringify({
-            event: 'email:get_recent',
-            data: { limit: 50, batch_size: 10 }
-          }));
-        }
-      };
 
       const handleKeyPress = (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -1851,17 +1890,7 @@
           React.createElement('div', { key: 'header', className: 'chat-header' }, [
             React.createElement('div', { key: 'logo', className: 'logo' }, 'COS'),
             React.createElement('div', { key: 'title', className: 'chat-title' }, [
-              React.createElement('h1', { key: 'h1' }, 'Chief of Staff'),
-              React.createElement('div', { key: 'status', className: 'connection-status' }, [
-                React.createElement('div', {
-                  key: 'dot',
-                  className: `status-dot ${connectionStatus}`
-                }),
-                React.createElement('span', {
-                  key: 'text',
-                  className: 'status-text'
-                }, connectionStatus)
-              ])
+              React.createElement('h1', { key: 'h1' }, 'Chief of Staff')
             ])
           ]),
           
@@ -1895,9 +1924,9 @@
             ]) : messages.map((msg, idx) =>
               React.createElement('div', {
                 key: idx,
-                className: `message ${msg.role}${msg.isThinking ? ' thinking' : ''}`
+                className: `message ${msg.role || (msg.sender === 'system' ? 'agent' : 'agent')}${msg.isThinking ? ' thinking' : ''}${msg.isStatus ? ' status' : ''}`
               }, [
-                React.createElement('div', { key: 'content', className: 'message-content' }, msg.content),
+                React.createElement('div', { key: 'content', className: 'message-content' }, msg.content || msg.text),
                 msg.timestamp && React.createElement('div', { key: 'time', className: 'message-time' }, 
                   new Date(msg.timestamp).toLocaleTimeString()
                 )
