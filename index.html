@@ -382,6 +382,8 @@
       margin-bottom: 20px;
       padding-bottom: 16px;
       border-bottom: 1px solid var(--border);
+      flex-shrink: 0; /* Prevent header from shrinking */
+      min-height: 60px; /* Fixed minimum height */
     }
 
     .panel-title {
@@ -398,12 +400,14 @@
     }
 
     .email-list {
-      flex: 1;
+      flex: 1 1 0;
       overflow-y: auto;
       background: var(--bg-secondary);
       border-radius: 12px;
       padding: 16px;
       border: 1px solid var(--border);
+      height: 100%;
+      box-sizing: border-box;
     }
 
     .email-item {
@@ -714,7 +718,7 @@
     }
 
     /* Status messages should appear as plain text like thinking messages */
-    .message.status .message-content {
+    .message.agent.status .message-content {
       background: none !important;
       color: var(--text-muted) !important;
       opacity: 0.7 !important;
@@ -1060,7 +1064,8 @@
                       text: progressMessage || `Loading ${current}/${total} emails...`,
                       timestamp: new Date().toISOString(),
                       sender: 'system',
-                      type: 'email_progress'
+                      type: 'email_progress',
+                      isStatus: true
                     };
                     
                     return [...filtered, progressMsg];
@@ -2030,13 +2035,7 @@
             ]) :
             React.createElement('div', { 
               key: 'list', 
-              className: 'email-list',
-              style: {
-                maxHeight: '60vh',
-                overflowY: 'auto',
-                overflowX: 'hidden',
-                paddingRight: '4px'
-              }
+              className: 'email-list'
             },
               emails.length === 0 ?
                 React.createElement('div', { 
