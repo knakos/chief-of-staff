@@ -589,6 +589,43 @@
       40% { opacity: 1; transform: scale(1.2); }
     }
 
+    /* Email list loading states */
+    .email-list-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 200px;
+      padding: 24px;
+      text-align: center;
+    }
+
+    .loading-spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--border);
+      border-top: 3px solid var(--brand-primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 16px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .loading-text {
+      color: var(--text-secondary);
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .loading-subtext {
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
     /* Assessment flags with uniform height */
     .assessment-flag {
       display: inline-flex;
@@ -1952,17 +1989,35 @@
               `${emails.length} emails with AI-powered insights`
             )
           ]),
-          React.createElement('div', { 
-            key: 'list', 
-            className: 'email-list',
-            style: {
-              maxHeight: '60vh',
-              overflowY: 'auto',
-              overflowX: 'hidden',
-              paddingRight: '4px'
-            }
-          },
-            emails.map(email =>
+          // Show loading spinner when emails are loading, otherwise show email list
+          emailsLoading ? 
+            React.createElement('div', { 
+              key: 'loading', 
+              className: 'email-list-loading' 
+            }, [
+              React.createElement('div', { key: 'spinner', className: 'loading-spinner' }),
+              React.createElement('div', { key: 'text', className: 'loading-text' }, 'Loading emails...'),
+              React.createElement('div', { key: 'subtext', className: 'loading-subtext' }, 'Please wait while we fetch your latest messages')
+            ]) :
+            React.createElement('div', { 
+              key: 'list', 
+              className: 'email-list',
+              style: {
+                maxHeight: '60vh',
+                overflowY: 'auto',
+                overflowX: 'hidden',
+                paddingRight: '4px'
+              }
+            },
+              emails.length === 0 ?
+                React.createElement('div', { 
+                  key: 'empty', 
+                  className: 'email-list-loading' 
+                }, [
+                  React.createElement('div', { key: 'text', className: 'loading-text' }, 'No emails found'),
+                  React.createElement('div', { key: 'subtext', className: 'loading-subtext' }, 'Try connecting to Outlook or refreshing the list')
+                ]) :
+                emails.map(email =>
               React.createElement('div', {
                 key: email.id,
                 className: `email-item ${selectedEmail?.id === email.id ? 'selected' : ''}`,
@@ -2104,6 +2159,26 @@
               `From: ${selectedEmail.sender || 'Unknown'} • ${selectedEmail.received_at ? formatTime(selectedEmail.received_at) : 'Unknown date'}`
             )
           ]),
+          // Show analysis loading indicator when email is processing
+          selectedEmail.isProcessing ? React.createElement('div', { 
+            key: 'analysis-loading', 
+            style: { 
+              marginBottom: '16px', 
+              padding: '12px 16px', 
+              background: 'rgba(59, 130, 246, 0.1)', 
+              border: '1px solid var(--brand-primary)', 
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px'
+            } 
+          }, [
+            React.createElement('div', { key: 'spinner', className: 'loading-spinner', style: { width: '20px', height: '20px', marginBottom: '0' } }),
+            React.createElement('div', { key: 'text-container' }, [
+              React.createElement('div', { key: 'text', style: { color: 'var(--brand-primary)', fontSize: '14px', fontWeight: '600' } }, 'AI Analysis in Progress'),
+              React.createElement('div', { key: 'subtext', style: { color: 'var(--text-secondary)', fontSize: '12px', marginTop: '2px' } }, 'Analyzing email content, tone, and priority...')
+            ])
+          ]) : null,
           React.createElement('div', { key: 'recipients', style: { marginBottom: '20px', padding: '12px', background: 'var(--bg-secondary)', borderRadius: '8px', border: '1px solid var(--border)' } }, [
             React.createElement('div', { key: 'header', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' } }, [
               React.createElement('h4', { key: 'title', style: { margin: '0', fontSize: '14px', color: 'var(--text-primary)', fontWeight: '600' } }, 'Recipients'),

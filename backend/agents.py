@@ -372,65 +372,35 @@ class COSOrchestrator(BaseAgent):
                 return f"❌ COM Test failed: {str(e)}"
 
         elif "/outlook triage" in command:
-            # Triage unprocessed Outlook emails
-            unprocessed = await self.email_triage.get_unprocessed_outlook_emails()
-            if not unprocessed:
-                return "No unprocessed emails found in Outlook"
-            
-            processed_count = 0
-            for outlook_email in unprocessed[:10]:  # Process first 10
-                # Convert Outlook email to local Email object for processing
-                local_email = Email(
-                    outlook_id=outlook_email["id"],
-                    subject=outlook_email.get("subject", ""),
-                    sender=outlook_email.get("from", {}).get("emailAddress", {}).get("address", ""),
-                    body_preview=outlook_email.get("bodyPreview", ""),
-                    received_at=datetime.utcnow()
-                )
-                db.add(local_email)
-                db.commit()
-                
-                # Triage with Outlook integration
-                await self.email_triage.triage_outlook_email(local_email, db)
-                processed_count += 1
-            
-            return f"Processed {processed_count} unprocessed emails with GTD categorization and COS properties"
+            # Email triage now handled directly via COM integration without database storage
+            return "Email triage functionality has been simplified - emails are processed directly from Outlook without database storage. Use email analysis features in the UI instead."
         
         elif "/outlook disconnect" in command:
-            # Disconnect current Outlook account
-            try:
-                self.email_triage.auth_manager.revoke_tokens()
-                return "Outlook account disconnected. Use /outlook status to connect a different account."
-            except Exception as e:
-                logger.error(f"Error disconnecting Outlook: {e}")
-                return f"Error disconnecting Outlook: {str(e)}"
+            # COM connection doesn't require explicit disconnect
+            return "COM connection automatically manages Outlook connection. No manual disconnect needed."
         
         elif "/outlook info" in command:
-            # Get detailed connection info
+            # Get connection info from COM service
             try:
-                connection_info = self.email_triage.hybrid_service.get_connection_info()
-                return f"Connection Info:\nMethod: {connection_info['method']}\nStatus: {connection_info['status']}\n{connection_info.get('help', '')}"
+                com_service = self.email_triage.get_com_service()
+                connection_info = com_service.get_connection_info()
+                if connection_info['connected']:
+                    return f"✅ Connected via COM\nAccount: {connection_info.get('account_info', {}).get('display_name', 'Unknown')}"
+                else:
+                    return "❌ Not connected to Outlook. Use '/outlook connect' to connect."
             except Exception as e:
                 logger.error(f"Error getting connection info: {e}")
                 return f"Error getting connection info: {str(e)}"
         
         elif "/outlook status" in command:
-            # Get Outlook integration status (legacy Graph API)
+            # Get COM connection status 
             logger.info("Processing /outlook status command")
             try:
-                is_authenticated = self.email_triage.auth_manager.is_authenticated()
-                logger.info(f"Authentication status: {is_authenticated}")
-                
-                if is_authenticated:
-                    token_info = self.email_triage.auth_manager.get_token_info()
-                    logger.info(f"Token info retrieved: {token_info}")
-                    return f"Graph API connected. Token expires: {token_info['expires_at']}\n\nTip: Use '/outlook connect' to try COM connection first."
+                com_service = self.email_triage.get_com_service()
+                if com_service.is_connected():
+                    return "✅ Outlook connected via COM. Ready to process emails."
                 else:
-                    auth_url, state = self.email_triage.auth_manager.get_authorization_url()
-                    logger.info(f"Generated auth URL: {auth_url[:100]}...")
-                    response_message = f"Graph API not connected. Please visit: {auth_url}\n\nAlternatively, use '/outlook connect' to try COM connection if Outlook is running locally."
-                    logger.info(f"Returning response message (first 200 chars): {response_message[:200]}...")
-                    return response_message
+                    return "❌ Not connected to Outlook. Use '/outlook connect' to connect."
             except Exception as e:
                 logger.error(f"Error processing /outlook status: {e}")
                 return f"Error checking Outlook status: {str(e)}"
@@ -509,30 +479,13 @@ class EmailTriageAgent(BaseAgent):
         self.intelligence_service = EmailIntelligenceService(claude_client)
         self.com_service.intelligence_service = self.intelligence_service
     
-    async def process_email(self, email_data: dict, db: Session) -> Dict[str, Any]:
-        """
-        Process a single email - triage, categorize, extract info
-        DEPRECATED: Email processing now handled by HybridOutlookService and app.py handlers
-        """
-        logger.warning("process_email is deprecated - use HybridOutlookService directly")
-        return {"success": False, "message": "Method deprecated - use direct Outlook integration"}
-    
-    async def sync_outlook_emails(self, db: Session, user_id: str = "default", 
-                                 initial_sync: bool = False) -> Dict[str, Any]:
-        """
-        Sync emails from Outlook 
-        DEPRECATED: Email sync now handled by HybridOutlookService directly
-        """
-        logger.warning("sync_outlook_emails is deprecated - use HybridOutlookService.get_messages() instead")
-        return {"success": False, "message": "Method deprecated - use direct Outlook integration"}
-    
-    async def setup_outlook_folders(self, user_id: str = "default") -> Dict[str, Any]:
-        """Setup GTD folder structure in Outlook"""
+    def setup_outlook_folders(self) -> Dict[str, Any]:
+        """Setup GTD folder structure in Outlook using COM service"""
         try:
-            folder_ids = await self.folder_manager.setup_gtd_folders(user_id)
+            results = self.com_service.setup_gtd_folders()
             return {
                 "success": True,
-                "folders_created": folder_ids
+                "folders_created": results
             }
         except Exception as e:
             logger.error(f"Folder setup failed: {e}")
@@ -541,125 +494,13 @@ class EmailTriageAgent(BaseAgent):
                 "error": str(e)
             }
     
-    async def triage_outlook_email(self, email_id: str, db: Session, 
-                                  user_id: str = "default") -> Dict[str, Any]:
-        """
-        Triage an email with Outlook-specific actions
-        DEPRECATED: Email triage now handled by HybridOutlookService with property sync
-        """
-        logger.warning("triage_outlook_email is deprecated - use handle_email_analyze in app.py instead")
-        return {"success": False, "message": "Method deprecated - use direct Outlook integration with property sync"}
     
-    async def search_outlook_emails_by_project(self, project_id: str, 
-                                              user_id: str = "default") -> List[Dict]:
-        """Search for emails linked to a project in Outlook"""
-        try:
-            return await self.extended_props.search_by_project(project_id, user_id)
-        except Exception as e:
-            logger.error(f"Project email search failed: {e}")
-            return []
     
-    async def search_outlook_emails_by_task(self, task_id: str, 
-                                           user_id: str = "default") -> List[Dict]:
-        """Search for emails linked to a task in Outlook"""
-        try:
-            return await self.extended_props.search_by_task(task_id, user_id)
-        except Exception as e:
-            logger.error(f"Task email search failed: {e}")
-            return []
     
-    async def get_unprocessed_outlook_emails(self, user_id: str = "default") -> List[Dict]:
-        """Get emails that haven't been processed by COS"""
-        try:
-            return await self.extended_props.get_unprocessed_emails(user_id)
-        except Exception as e:
-            logger.error(f"Unprocessed emails search failed: {e}")
-            return []
+    def get_com_service(self) -> OutlookCOMService:
+        """Get the COM service instance for direct email operations"""
+        return self.com_service
     
-    async def view_inbox_messages(self, db: Session, limit: int = 20) -> Dict[str, Any]:
-        """Get and display inbox messages using the hybrid service"""
-        try:
-            # Ensure connection (this will also create folders if needed)
-            if not self.hybrid_service.is_connected():
-                connect_result = await self.hybrid_service.connect()
-                if not connect_result.get("connected"):
-                    return {
-                        "success": False,
-                        "message": connect_result.get("message", "Failed to connect to Outlook"),
-                        "connection_help": connect_result.get("help")
-                    }
-            
-            # Get messages from inbox
-            messages = await self.hybrid_service.get_messages("Inbox", limit)
-            
-            if not messages:
-                return {
-                    "success": True,
-                    "message": "Your inbox is empty or no messages could be retrieved.",
-                    "messages": [],
-                    "count": 0
-                }
-            
-            # Email sync to database removed - emails accessed directly from Outlook
-            synced_count = len(messages) if messages else 0
-            logger.info(f"Retrieved {synced_count} emails directly from Outlook (no database storage)")
-            
-            return {
-                "success": True,
-                "messages": messages,
-                "count": len(messages),
-                "synced_new": synced_count,
-                "connection_method": self.hybrid_service._connection_method
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to view inbox messages: {e}")
-            return {
-                "success": False,
-                "error": str(e),
-                "message": "Failed to retrieve inbox messages"
-            }
-    
-    async def _analyze_email_with_ai(self, email_data: dict) -> Dict[str, Any]:
-        """Analyze email using AI to extract insights and suggestions"""
-        context = {
-            "email_subject": email_data.get("subject", ""),
-            "email_content": email_data.get("body_content", "") or email_data.get("body_preview", ""),
-            "sender": email_data.get("sender", ""),
-            "sender_name": email_data.get("sender_name", ""),
-            "received_at": email_data.get("received_at", ""),
-            "importance": email_data.get("importance", "normal"),
-            "has_attachments": email_data.get("has_attachments", False)
-        }
-        
-        # Generate comprehensive email analysis
-        response = await self.claude_client.generate_response(
-            "system/emailtriage", 
-            context=context, 
-            user_input="analyze_email"
-        )
-        
-        # Extract tasks from email content
-        tasks = await self.claude_client.extract_tasks_from_text(
-            email_data.get("body_content", "") or email_data.get("body_preview", "")
-        )
-        
-        # Generate action suggestions
-        suggestions = await self.claude_client.generate_suggestions(context)
-        
-        return {
-            "summary": response,
-            "extracted_tasks": tasks,
-            "suggestions": suggestions,
-            "requires_action": "action" in response.lower(),
-            "waiting_for_response": "waiting" in response.lower(),
-            "is_meeting_related": any(word in (email.subject or "").lower() 
-                                    for word in ["meeting", "calendar", "schedule"]),
-            "is_reference": "reference" in response.lower(),
-            "contains_tasks": len(tasks) > 0,
-            "confidence": 0.8,  # Default confidence, could be enhanced with more AI analysis
-            "project_id": None  # Would be determined by project matching logic
-        }
 
 class SummarizerAgent(BaseAgent):
     """Agent responsible for content summarization and task extraction"""

@@ -47,7 +47,8 @@
       "Read(/mnt/c/Users/knako/OneDrive/**)",
       "Bash(sed:*)",
       "Bash(./scripts/start_all.sh:*)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Read(//**)"
     ],
     "deny": [],
     "ask": []

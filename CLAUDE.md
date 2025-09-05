@@ -27,18 +27,14 @@ cd backend
 .venv\Scripts\activate
 .venv\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8787 --reload
 
-# Database optimization (run periodically)
-python optimize_db.py
+# Test system (comprehensive validation)
+python test_system.py  # New consolidated test suite
+python test_setup.py   # Wrapper for comprehensive test
 
-# Test backend setup
-python test_setup.py  # Comprehensive setup validation
+# Database migration (if schema changes)
+python migrate_email_removal.py  # Recent migration removing email tables
 
-# Debug and testing scripts (in backend/)
-python debug_email_extraction.py  # Debug email content extraction
-python test_recipient_extraction.py  # Test email recipient parsing
-python validate_complete_solution.py  # Validate system integration
-
-# Rate limiting and performance testing
+# Rate limiting test
 python -c "from claude_client import ClaudeClient; import asyncio; print('Testing rate limiting...'); asyncio.run(ClaudeClient()._apply_rate_limiting())"
 ```
 
@@ -89,10 +85,10 @@ This is a **comprehensive digital Chief of Staff assistant** that serves as an i
 - **Knowledge Management**: Builds contextual memory, verifies facts, maps relationships, learns decision patterns
 
 ### Multi-Agent Architecture
-**6-Agent Orchestrated System:**
+**Simplified Agent System:**
 - **COS Orchestrator**: Master coordinator routing user commands and coordinating agent responses (`agents.py:COSOrchestrator`)
+- **EmailTriageAgent**: Simplified COM-only email processing with direct Outlook integration (`agents.py:EmailTriageAgent`)
 - **Contextor Agent**: Manages strategic interviews (≤1/day) and normalized proposals (`agents.py:ContextorAgent`)
-- **Email Triage Agent**: Handles email bundles, GTD categorization, and project linking (`agents.py:EmailTriageAgent`)
 - **Summarizer Agent**: Creates TL;DR summaries and extracts actionable tasks from any content (`agents.py:SummarizerAgent`)
 - **Writer Agent**: Generates on-tone drafts with review checklists and writing templates (`agents.py:WriterAgent`)
 - **Background Processes**: Continuous context scanning, digest building, link suggestions via job queue (`job_queue.py`)
@@ -106,30 +102,32 @@ This is a **comprehensive digital Chief of Staff assistant** that serves as an i
 
 ## Technical Architecture
 
-Three-tier system with real-time WebSocket communication, optimized performance, and modern UI design system:
+Simplified three-tier system with direct COM email integration, real-time WebSocket communication, and modern UI:
 
 ### Backend (FastAPI + WebSocket)
 - **Location**: `backend/` directory
 - **Tech Stack**: FastAPI, WebSockets, SQLAlchemy (SQLite with WAL mode), Pydantic
 - **Key Files**:
   - `app.py` - Main FastAPI application with WebSocket broadcasting and REST endpoints
-  - `models.py` - Database models: Project, Task, Email, ContextEntry, Job, Interview, Digest
-  - `agents.py` - Multi-agent system with COS orchestrator and specialized agents
+  - `models.py` - Database models: Project, Task, ContextEntry, Job, Interview, Digest (NO Email model)
+  - `agents.py` - Simplified multi-agent system with COS orchestrator
   - `claude_client.py` - AI client with response caching (5-min TTL) and prompt management
   - `job_queue.py` - Background job processing with async operations and status tracking
   - `performance.py` - Performance monitoring decorators and timing metrics
-  - `integrations/outlook/` - Outlook integration with COM and Graph API hybrid approach
+  - `integrations/outlook/` - COM-only Outlook integration for direct email access
+  - `test_system.py` - Consolidated comprehensive test suite
 - **WebSocket Protocol**: JSON messages `{event, data}`, handles user input, job updates, agent responses
 - **AI Integration**: Claude-only provider, prompts loaded from `llm/prompts/`, hard-fail if missing
-- **Job Processing**: Flat job queue for background tasks (email_scan, context_scan, digest_build)
-- **Database**: SQLite with WAL mode, comprehensive indexes, connection pooling, sample data generation
+- **Job Processing**: Flat job queue for background tasks (context_scan, digest_build)
+- **Database**: SQLite with WAL mode, indexes, connection pooling (emails NOT stored in database)
 
-**Outlook Integration Architecture:**
-- **Hybrid Service**: COM first (direct Outlook access), fallback to Graph API
-- **COM Connector**: `pywin32` for direct Outlook manipulation on Windows
-- **Graph API**: OAuth2 flow for cloud-based email access
-- **GTD Folders**: Automated creation of COS_Actions, COS_Assigned, COS_ReadLater, COS_Reference, COS_Archive under Inbox
-- **Extended Properties**: Email-project linking via `COS.ProjectId`, `COS.TaskIds` metadata
+**Email Architecture - COM-Only Integration:**
+- **Direct COM Access**: Emails accessed directly from Outlook via `pywin32`, not stored in database
+- **COM Service**: `OutlookCOMService` provides email loading, analysis, and folder operations
+- **Required Methods**: Uses `_get_messages_legacy()` and standard property sync methods - these are the ONLY allowed methods
+- **COS Properties**: Email analysis persisted as Outlook extended properties (`COS.Priority`, `COS.Tone`, etc.)
+- **GTD Folders**: Automated creation of COS_Actions, COS_Assigned, COS_ReadLater, COS_Reference, COS_Archive
+- **On-Demand Analysis**: Emails analyzed only when explicitly requested via UI
 
 ### Frontend (Electron)
 - **Location**: Root level with `main.js`, `preload.js`, `index.html`
@@ -174,17 +172,18 @@ Three-tier system with real-time WebSocket communication, optimized performance,
 - **Prompt Management**: `claude_client.py` handles prompt loading, caching, and Claude API calls
 
 **Command Processing Flow:**
-1. User types command (e.g., `/outlook connect`, `/triage`)
+1. User types command (e.g., `/outlook connect`, `/outlook status`)
 2. WebSocket message sent to backend
 3. COS Orchestrator analyzes intent and selects appropriate agent
 4. Agent loads relevant prompt from `llm/prompts/`
-5. Context gathered from database (projects, emails, previous conversations)
+5. Context gathered from database (projects, tasks, previous conversations)
 6. Claude API called with prompt + context
 7. Response processed and sent back via WebSocket
 8. Background jobs queued for follow-up actions
 
 ### Database Schema & Performance
-- **Core Entities**: Projects, Tasks, Emails, ContextEntries, Jobs, Interviews, Digests
+- **Core Entities**: Projects, Tasks, ContextEntries, Jobs, Interviews, Digests
+- **Email Storage**: **REMOVED** - Emails accessed directly from Outlook, not stored in database
 - **Optimization Features**:
   - Comprehensive indexing on frequently queried columns (status, foreign keys, dates)
   - WAL mode for better concurrency
@@ -192,22 +191,23 @@ Three-tier system with real-time WebSocket communication, optimized performance,
   - Automatic cleanup of old data (completed jobs, dismissed interviews, expired context)
   - Performance pragmas (cache_size, temp_store, mmap_size)
 - **Key Indexes**: Composite indexes for complex queries, covering indexes for performance
+- **Foreign Key Updates**: Uses `related_email_outlook_id` (string) instead of database foreign keys
 
 ### Email Integration Features
+- **Direct COM Integration**: All email access via Outlook COM interface, no database storage
 - **Smart Outlook Organization**: GTD-style folders (COS_Actions, COS_Assigned, COS_ReadLater, COS_Reference, COS_Archive under Inbox)
-- **Extended Properties**: `COS.ProjectId`, `COS.TaskIds`, `COS.LinkedAt`, `COS.Confidence`, `COS.Provenance`
-- **Intelligent Categorization**: COS/* namespace for systematic email categorization
-- **Email-Project Linking**: Automatic association of emails with ongoing projects and tasks
-- **COM Integration**: Direct Windows Outlook access via `pywin32` for real-time folder operations
-- **Graph API Fallback**: Cloud-based access when local Outlook unavailable
-- **Hybrid Connection**: Automatically tries COM first, falls back to Graph API
+- **Extended Properties**: Email metadata via `COS.ProjectId`, `COS.Priority`, `COS.Tone`, `COS.Urgency`, etc.
+- **Intelligent Analysis**: On-demand AI analysis with results persisted as Outlook properties
+- **Required Methods Only**: Must use `_get_messages_legacy()` and standard property sync - batch processing methods are forbidden
+- **Progressive Loading**: Emails loaded in batches to frontend for smooth UX
+- **Analysis Persistence**: All AI analysis stored in Outlook, survives application restarts
 
 **Available Commands:**
-- `/outlook connect` - Establish connection (COM first, then Graph API)
+- `/outlook connect` - Establish COM connection to Outlook
 - `/outlook info` - Show connection details and account information
-- `/outlook sync` - Download emails from inbox to database
 - `/outlook setup` - Create GTD folder structure in Outlook
-- `/outlook triage` - AI-process unprocessed emails into appropriate folders
+- `/outlook status` - Check COM connection status
+- `/outlook triage` - Simplified triage message (functionality moved to UI)
 
 ### Rate Limiting & API Management
 The system implements intelligent rate limiting to prevent Anthropic API 429 errors:
@@ -240,29 +240,31 @@ This architecture ensures the system is responsive during active use while preve
 ## Development Notes
 
 ### Critical Implementation Details
-- **🚨 OUTLOOK INTEGRATION RULE**: **ONLY USE LEGACY METHODS** - No batch processing, no optimized loading, no hybrid methods. Always use `_get_messages_legacy()` and standard property sync methods. Batch loaders and optimized methods are explicitly forbidden and break COS property loading.
+- **🚨 EMAIL ARCHITECTURE RULE**: Emails are **NEVER** stored in database - all email access is direct COM integration with Outlook
+- **🚨 OUTLOOK INTEGRATION RULE**: **ONLY USE STANDARD METHODS** - Always use `_get_messages_legacy()` and standard property sync methods - these are the ONLY allowed methods. Batch loaders and optimized methods are forbidden and break COS property loading
 - **Prompt Management**: All prompts stored as `.md` files in `llm/prompts/` - these define the core AI intelligence behavior
-- **Multi-Agent Coordination**: COS Orchestrator routes commands, specialized agents handle domain-specific tasks
-- **Interview Limits**: Context interviews limited to ≤1 per day to avoid user fatigue
+- **Simplified Agent System**: EmailTriageAgent streamlined to only essential methods, deprecated methods removed
+- **Testing**: Consolidated into `test_system.py` - comprehensive test covering all functionality
+- **Database Migration**: `migrate_email_removal.py` handles schema updates for removing email tables
 - **Development vs Production**: Mock responses when no `ANTHROPIC_API_KEY`, real Claude calls in production
 - **Environment Setup**: `.env` file in `backend/` with `ANTHROPIC_API_KEY`, `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`
 - **Windows COM Requirements**: `pywin32` installed, Outlook running with target account logged in
 - **Database Initialization**: Run `python init_db.py` to create tables with sample data
-- **Testing**: `python test_setup.py` validates entire backend setup without API keys
+- **Testing**: `python test_system.py` validates entire backend setup without API keys
 - **Design System**: Use `design/modern-tokens.css` for styling, reusable components in `electron/src/ui/components/ui/`
-- **Email Schema**: Emails accessed directly from Outlook via hybrid COM/Graph API, not stored in database
-- **WebSocket Events**: System uses event-driven architecture with JSON messages `{event, data}` format
 
 **Key Architecture Decisions:**
 - SQLite with WAL mode for concurrent access and performance
 - WebSocket for real-time communication (not REST for chat-like interactions)
 - Electron for cross-platform desktop app with native OS integration
-- Hybrid Outlook integration for maximum compatibility (COM + Graph API)
+- COM-only Outlook integration for maximum reliability and performance
 - Job queue pattern for background processing without blocking user interactions
 - Agent-based AI architecture for specialized, context-aware responses
+- Direct email access eliminates database overhead and complexity
 
 ### Performance & Architecture Patterns
-- **Database**: WAL mode + comprehensive indexing + connection pooling = 70% faster queries
+- **Database**: WAL mode + comprehensive indexing + connection pooling = high performance
+- **Email Access**: Direct COM integration eliminates database bottleneck
 - **WebSocket**: Concurrent broadcasting with proper error handling and auto-reconnection
 - **Frontend**: React optimization patterns (memo, callbacks, useMemo) prevent unnecessary re-renders
 - **Caching**: AI response caching (5min TTL) + LRU prompt caching reduces redundant API calls
@@ -281,159 +283,25 @@ This architecture ensures the system is responsive during active use while preve
 ### Script Permissions & Common Issues
 - **Windows Environment**: Use `.venv\Scripts\python.exe` for all Python commands in backend/
 - **WSL Environment**: Use `source .venv/bin/activate` and `python` commands in backend/
-- **Unicode Errors**: Windows console may fail with Unicode characters in test_setup.py - ignore cosmetic errors
 - **Backend must be started before frontend** for WebSocket connection
 - **Missing `.env` file** will cause backend startup failure - copy from `.env.example`
 - **Database optimization** should be run periodically for best performance
-- **Rate Limit Errors**: System now prevents 429 errors with 30-minute idle timeout and 1-second API spacing
+- **Rate Limit Errors**: System prevents 429 errors with 30-minute idle timeout and 1-second API spacing
 - **COM Requirements**: Windows Outlook must be running with target account logged in for COM integration
 - **Port Conflicts**: Backend runs on port 8787 - ensure no other services use this port
 - **Node/Electron Issues**: Run `npm install` in root directory before `npm run dev`
+- **Schema Migration**: If database schema errors occur, run migration script first
 
 ## Key Implementation Priorities
 
 When building this system, remember:
-1. **Context is King**: Every feature should contribute to building and maintaining user context
-2. **Proactive not Reactive**: The system should anticipate needs, not just respond to requests  
-3. **Project-Centric**: Everything (emails, tasks, information) should link back to projects and goals
-4. **Intelligence Over Automation**: Use AI to provide insights and suggestions, not just automate tasks
-5. **Respectful Interruption**: Interviews and suggestions should be valuable and well-timed
-6. **Performance First**: All operations should be optimized for responsiveness and reliability
-7. **Design Consistency**: Use the modern design system and component library for all UI development
-8. **User Experience**: Prioritize connection awareness, loading states, and error feedback
-
-## Development Roadmap & Next Steps
-
-### Immediate Priorities (Foundation - Implement First)
-
-#### 1. Core UI Development (CRITICAL)
-**Email Management Interface**:
-- **Email List View**: Sortable, filterable email list with live Outlook integration (expand EmailThreadView)
-- **Email Detail Panel**: Rich email content display with inline actions, threading, and project linking
-- **Email Actions Sidebar**: Context-aware action suggestions (move to folder, extract tasks, schedule follow-up)
-- **Email Search & Filter**: Real-time search across subjects, senders, content with project/task context
-- **Email Composition**: Smart draft generation with templates based on recipient and context
-
-**Email Intelligence & Recommendations**:
-- **Context-Aware Email Summary**: Key points extraction considering sender relationship, project relevance, urgency indicators
-- **Smart Action Recommendations**: Intelligent suggestions based on sender (boss/team/external), content analysis, and project context:
-  - **Archive**: Low priority, informational emails with no action needed
-  - **Read Later**: Important but non-urgent emails (articles, updates, reports)
-  - **Reply Required**: Emails needing response with priority based on sender relationship
-  - **Delegate/Forward**: Items better handled by team members with recipient suggestions
-  - **Create Task**: Action items extracted with project assignment and due date suggestions
-  - **Schedule Meeting**: When email content suggests need for discussion or collaboration
-  - **Add to Project**: Link to existing or suggest new project association
-- **Priority Scoring**: Dynamic priority based on sender importance, content urgency, project deadlines, user patterns
-- **Response Templates**: Context-appropriate reply templates based on sender relationship and email type
-
-**Project & Task Management Interface**:
-- **Enhanced Project Dashboard**: Real-time project health, timeline views, resource allocation
-- **Task Management Panel**: Drag-and-drop task organization, dependency visualization, status tracking  
-- **Area Overview Enhancement**: Visual project hierarchy with progress indicators and quick actions
-- **Task Creation Flow**: Smart task extraction from emails, voice input, quick capture
-- **Project Timeline View**: Gantt-style visualization with milestone tracking and deadline alerts
-
-#### 2. User Context Acquisition System (CRITICAL)
-**Personal Profile Management**:
-- **User Profile Setup**: Guided onboarding to capture personal details (DOB, work location, preferences)
-- **Organizational Context**: Role definition, reporting structure, team composition, department/division
-- **Work Patterns**: Schedule preferences, communication style, decision-making patterns
-- **Goal Setting**: Personal and professional objectives with timeline and success metrics
-
-**Organizational Intelligence**:
-- **Contact Management**: Import and categorize contacts (boss, peers, direct reports, external stakeholders)
-- **Team Structure Mapping**: Visual org chart with role definitions and interaction patterns
-- **Project Stakeholder Tracking**: Link contacts to projects with role definitions (sponsor, contributor, approver)
-- **Communication Preferences**: Per-contact communication styles, escalation paths, availability
-
-**Context Learning Engine**:
-- **Behavioral Pattern Recognition**: Learn user habits, peak productivity hours, decision patterns
-- **Preference Learning**: Communication style, project management approach, priority frameworks
-- **Historical Context**: Track decisions, outcomes, and lessons learned for future recommendations
-- **Dynamic Context Updates**: Continuous learning from user interactions and feedback
-
-#### 3. Enhanced Email Intelligence (Building on UI)
-- **Smart Email Actions**: Content-based action suggestions integrated into email detail panel
-- **Email Threading**: Proper conversation threading using Outlook's thread_id with visual indicators
-- **Project-Email Linking**: Automatic and manual email-to-project association with confidence scoring
-- **Draft Generation**: Context-aware email composition using recipient history and project context
-
-### Medium-term Enhancements (2-4 weeks)
-
-#### Multi-Channel Integration
-- **Calendar Integration**: Connect with Outlook Calendar for meeting-aware task scheduling
-- **Teams/Slack Integration**: Extend context awareness to team chat platforms
-- **Document Intelligence**: OCR and analysis of attached documents for task/project extraction
-- **Mobile Companion**: Build mobile interface for on-the-go status updates and quick actions
-
-#### Advanced AI Capabilities  
-- **Custom Agent Training**: Allow users to train specialized agents for domain-specific tasks
-- **Multi-language Support**: Handle emails and content in multiple languages with translation
-- **Voice Interface**: Add voice commands and dictation for hands-free operation
-- **Predictive Analytics**: Forecast project timelines and potential bottlenecks using historical data
-
-#### Collaboration Features
-- **Team Dashboards**: Multi-user project visibility with role-based access control
-- **Delegation Tracking**: Monitor delegated tasks across team members with status updates
-- **Knowledge Base**: Build searchable repository of decisions, templates, and best practices
-- **Performance Analytics**: Track productivity metrics and provide insights for improvement
-
-### Long-term Vision (1-3 months)
-
-#### Enterprise Integration
-- **SSO Authentication**: Enterprise login integration with Azure AD/Google Workspace
-- **API Gateway**: RESTful API for third-party integrations and custom extensions
-- **Compliance Features**: Audit trails, data retention policies, and regulatory compliance tools
-- **Scalable Architecture**: Multi-tenant support with cloud deployment options
-
-#### AI-Powered Insights
-- **Strategic Planning**: Long-term goal tracking with milestone prediction and risk assessment  
-- **Competitive Intelligence**: Monitor industry trends and suggest strategic opportunities
-- **Performance Optimization**: Machine learning-driven productivity improvement recommendations
-- **Executive Reporting**: Automated executive summaries with key metrics and insights
-
-### Technical Debt & Infrastructure
-
-#### Code Quality Improvements
-- **Comprehensive Testing**: Unit tests, integration tests, and end-to-end test coverage
-- **Type Safety**: Complete TypeScript coverage in frontend with strict mode enabled
-- **Error Handling**: Centralized error handling with user-friendly error messages
-- **Performance Monitoring**: APM integration with performance metrics and alerting
-
-#### Security & Reliability
-- **Data Encryption**: End-to-end encryption for sensitive email and project data
-- **Backup Strategy**: Automated backups with disaster recovery procedures
-- **Security Audit**: Vulnerability assessment and penetration testing
-- **Monitoring & Alerting**: Production monitoring with automated incident response
-
-### Implementation Notes
-
-**Development Approach**: Prioritize user value over technical complexity. Each feature should solve a real productivity problem and integrate seamlessly with existing workflows.
-
-**Quality Gates**: Every new feature requires comprehensive testing, documentation updates, and user experience validation before deployment.
-
-**User Feedback Loop**: Implement analytics and feedback mechanisms to measure feature adoption and effectiveness, informing future development priorities.
-- Take the time you need to write a proper and correct solution.
-
-For non-trivial issues (e.g., unclear bugs, intermittent errors, complex flows), first add appropriate logging/debugging code (e.g., log inputs, intermediate states, and error conditions). This should be clear, lightweight, and relevant for diagnosing the issue.
-
-Use those logs to reason about where the bug or failure occurs, and then propose a fix.
-
-After applying a fix, thoroughly test the solution. Tests should cover:
-
-Typical cases (normal expected input).
-
-Edge cases (empty input, None, unusual values, very large/small numbers).
-
-Unicode and international text (e.g., "Café", "你好", "👩🏽‍💻").
-
-Error conditions (e.g., invalid input, division by zero).
-
-Verify and show the test results: expected vs. actual outputs.
-
-If any test fails, fix the code and re-run the tests until everything passes.
-
-Do not rush. It is better to take longer and deliver a thorough, correct, well-instrumented, and validated solution than to quickly return an incomplete one.
-
-Only when all tests pass should you report that the solution is complete. Always include the final tested code, the logging additions (if applicable), and the test results in your response.
+1. **Simplicity First**: The architecture has been streamlined - avoid adding complexity back
+2. **Direct Email Access**: Never store emails in database - always use COM integration
+3. **Performance Optimization**: The system is optimized for responsiveness and efficiency
+4. **Context is King**: Every feature should contribute to building and maintaining user context
+5. **Proactive not Reactive**: The system should anticipate needs, not just respond to requests  
+6. **Project-Centric**: Everything (emails, tasks, information) should link back to projects and goals
+7. **Intelligence Over Automation**: Use AI to provide insights and suggestions, not just automate tasks
+8. **Respectful Interruption**: Interviews and suggestions should be valuable and well-timed
+9. **Design Consistency**: Use the modern design system and component library for all UI development
+10. **User Experience**: Prioritize connection awareness, loading states, and error feedback
