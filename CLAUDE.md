@@ -137,32 +137,38 @@ Three-tier system with real-time WebSocket communication, optimized performance,
 
 ### Frontend (Electron)
 - **Location**: Root level with `main.js`, `preload.js`, `index.html`
-- **UI Location**: `electron/src/ui/` (React/TypeScript components)
-- **Key Components**: 
+- **Architecture**: Monolithic React-in-HTML structure (not separate TypeScript components)
+- **Key Files**: 
   - `main.js` - Electron main process, window management
   - `preload.js` - Secure bridge between main and renderer processes
-  - `index.html` - Entry point loading React application
-  - `App.tsx` - Main React app with sidebar navigation and connection status
-  - `ChatInbox.tsx` - Chat interface with welcome screen, quick actions, typing indicators
-  - `EmailThreadView.tsx` - Email thread display with AI suggestions
-  - `lib/ws.ts` - WebSocket client with auto-reconnection and exponential backoff
-  - `components/ui/` - Reusable component library (Button, Card, Input, Badge)
-- **Architecture**: Electron renderer process running React app, communicates via WebSocket to backend
+  - `index.html` - Complete React application (~5000+ lines) with embedded styles and components
+  - `design/modern-tokens.css` - Design system with CSS custom properties for theming
+- **React Structure**: Uses `React.createElement()` instead of JSX, all components defined inline in index.html
+- **Key Components**: 
+  - Chat interface with WebSocket messaging
+  - Project management with Areas/Projects/Tasks hierarchy
+  - Project Areas Carousel (2-area navigation with arrows)
+  - Real-time connection status monitoring
+  - Inline task editing with click-to-edit functionality
+- **WebSocket Integration**: Direct WebSocket connection to backend on port 8787 with auto-reconnection
 - **Development**: `npm run dev` starts Electron with hot reload, connects to backend on port 8787
-- **Design System**: Modern dark theme using CSS custom properties from `design/modern-tokens.css`
+- **Design System**: Modern dark theme using CSS custom properties, no hardcoded values allowed
 
 ### Modern Design System
-- **Location**: `design/` directory with `modern-tokens.css` as the primary design system
-- **Component Library**: `electron/src/ui/components/ui/` with reusable components
+- **Location**: `design/modern-tokens.css` as the primary design system
 - **Design Tokens**: CSS custom properties for colors, typography, spacing, shadows, transitions
-- **Components Available**: 
-  - `Button` - Multiple variants with loading states and icons
-  - `Card` - Elevated cards with flexible padding and composition
-  - `Input` - Enhanced inputs with labels, icons, and error states  
-  - `Badge` - Status badges for message types and statuses
+- **Usage**: All styling must use CSS custom properties (e.g., `var(--font-size-sm)`, `var(--brand-primary)`)
+- **Components**: Inline React.createElement components within index.html using the token system
+- **Key UI Elements**: 
+  - Navigation buttons with hover states and disabled styles
+  - Project/task cards with consistent spacing and visual hierarchy
+  - Status indicators with semantic color coding
+  - Carousel controls with smooth transitions
+  - Form inputs with proper focus states
 - **Theme**: Professional dark theme with indigo brand colors, proper contrast ratios
-- **Typography**: Inter font family with proper font weights and line heights
+- **Typography**: System font stack with proper font weights and line heights
 - **Layout**: CSS Grid-based responsive design with consistent spacing
+- **Transitions**: Smooth animations using `var(--transition-fast)` and `var(--transition-normal)`
 
 ### LLM Integration
 - **Prompts Location**: `llm/prompts/` directory with structured categories:
@@ -251,6 +257,13 @@ This architecture ensures the system is responsive during active use while preve
   - **DateTime Handling**: Backend properly handles datetime field parsing for task updates (created_at, due_date, completed_at)
   - **Project Count Sync**: Task operations (create/delete/archive/restore) automatically refresh project task counts via `loadProjectsForArea()`
   - **Status Consistency**: All task statuses use `not_started` instead of legacy `pending` status
+- **🚨 PROJECT AREAS CAROUSEL (2025-09)**: New carousel navigation for Project Areas:
+  - **Two Areas Visible**: `visibleTabsCount` set to 2 for clean interface showing exactly 2 project areas at once
+  - **Navigation Controls**: Left/right arrow buttons (‹ ›) with disabled states at boundaries
+  - **Position Indicator**: Shows current range (e.g., "1-2 of 5") when there are more areas than visible
+  - **No Overflow Menu**: Removed confusing [...] dropdown - carousel arrows are the single navigation method
+  - **Carousel State**: Uses `carouselOffset` to track current position with automatic boundary checking
+  - **Auto-Reset Logic**: Carousel offset automatically adjusts when areas are added/removed to prevent out-of-bounds
 - **Prompt Management**: All prompts stored as `.md` files in `llm/prompts/` - these define the core AI intelligence behavior
 - **Multi-Agent Coordination**: COS Orchestrator routes commands, specialized agents handle domain-specific tasks
 - **Interview Limits**: Context interviews limited to ≤1 per day to avoid user fatigue

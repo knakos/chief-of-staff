@@ -785,6 +785,48 @@
       font-weight: 600;
       color: var(--text-primary);
     }
+    
+    .carousel-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .carousel-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+    
+    .carousel-btn:hover:not(:disabled) {
+      background: var(--surface-hover);
+      border-color: var(--brand-primary);
+      color: var(--brand-primary);
+    }
+    
+    .carousel-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      background: var(--surface);
+      border-color: var(--border);
+      color: var(--text-muted);
+    }
+    
+    .carousel-indicator {
+      font-size: 12px;
+      color: var(--text-muted);
+      min-width: 60px;
+      text-align: center;
+    }
 
     .area-tabs-wrapper {
       flex: 1;
@@ -801,6 +843,7 @@
       overflow-x: hidden;
       overflow-y: visible;
       flex-wrap: nowrap;
+      transition: transform var(--transition-normal);
     }
 
     .area-tab {
@@ -1911,7 +1954,8 @@
       
       // Area tabs state
       const [areaTabOrder, setAreaTabOrder] = useState([]);
-      const [visibleTabsCount, setVisibleTabsCount] = useState(8);
+      const [visibleTabsCount, setVisibleTabsCount] = useState(2);
+      const [carouselOffset, setCarouselOffset] = useState(0);
       const [showOverflowMenu, setShowOverflowMenu] = useState(false);
       const [draggedTab, setDraggedTab] = useState(null);
       
@@ -2417,6 +2461,14 @@
         }
       }, [areas, areaTabOrder.length]);
 
+      // Reset carousel offset when areas change to prevent out-of-bounds
+      useEffect(() => {
+        const maxOffset = Math.max(0, areas.length - visibleTabsCount);
+        if (carouselOffset > maxOffset) {
+          setCarouselOffset(maxOffset);
+        }
+      }, [areas.length, carouselOffset, visibleTabsCount]);
+
       // Close overflow menu on outside click
       useEffect(() => {
         const handleOutsideClick = (event) => {
@@ -2703,12 +2755,32 @@
 
       const getVisibleAreas = () => {
         const ordered = getOrderedAreas();
-        return ordered.slice(0, visibleTabsCount);
+        return ordered.slice(carouselOffset, carouselOffset + visibleTabsCount);
       };
 
       const getOverflowAreas = () => {
+        // No overflow areas - carousel handles all navigation
+        return [];
+      };
+
+      const canScrollLeft = () => carouselOffset > 0;
+      
+      const canScrollRight = () => {
         const ordered = getOrderedAreas();
-        return ordered.slice(visibleTabsCount);
+        return carouselOffset + visibleTabsCount < ordered.length;
+      };
+      
+      const scrollCarouselLeft = () => {
+        if (canScrollLeft()) {
+          setCarouselOffset(Math.max(0, carouselOffset - 1));
+        }
+      };
+      
+      const scrollCarouselRight = () => {
+        const ordered = getOrderedAreas();
+        if (canScrollRight()) {
+          setCarouselOffset(Math.min(ordered.length - visibleTabsCount, carouselOffset + 1));
+        }
       };
 
       const moveAreaTab = (fromIndex, toIndex) => {
@@ -4482,14 +4554,41 @@
 
         return React.createElement('div', { className: 'project-navigator' }, [
           React.createElement('div', { key: 'container', className: 'area-tabs-container' }, [
-            // Header with title and new area button
+            // Header with title and carousel navigation
             React.createElement('div', { key: 'header', className: 'area-tabs-header' }, [
               React.createElement('h3', { key: 'title' }, 'Areas'),
-              React.createElement('button', { 
-                key: 'new-area',
-                className: 'btn btn-sm btn-outline',
-                onClick: createNewArea
-              }, '+ Area')
+              React.createElement('div', { key: 'controls', className: 'carousel-controls' }, [
+                React.createElement('button', {
+                  key: 'prev',
+                  className: 'carousel-btn',
+                  onClick: scrollCarouselLeft,
+                  disabled: !canScrollLeft(),
+                  title: 'Previous areas'
+                }, '‹'),
+                React.createElement('div', { 
+                  key: 'indicator',
+                  className: 'carousel-indicator'
+                }, (() => {
+                  const orderedAreas = getOrderedAreas();
+                  if (orderedAreas.length <= visibleTabsCount) return '';
+                  const start = carouselOffset + 1;
+                  const end = Math.min(carouselOffset + visibleTabsCount, orderedAreas.length);
+                  return `${start}-${end} of ${orderedAreas.length}`;
+                })()),
+                React.createElement('button', {
+                  key: 'next', 
+                  className: 'carousel-btn',
+                  onClick: scrollCarouselRight,
+                  disabled: !canScrollRight(),
+                  title: 'Next areas'
+                }, '›'),
+                React.createElement('button', { 
+                  key: 'new-area',
+                  className: 'btn btn-sm btn-outline',
+                  onClick: createNewArea,
+                  style: { marginLeft: '12px' }
+                }, '+ Area')
+              ])
             ]),
             
             // Tabs wrapper
@@ -4633,33 +4732,7 @@
                     React.createElement('span', { key: 'count', className: 'area-tab-count' }, 
                       formatCount(area.project_count || 0))
                   ]);
-                }),
-                
-                // Overflow menu if needed
-                hasOverflow ? React.createElement('div', { key: 'overflow', className: 'area-overflow-menu' }, [
-                  React.createElement('div', { 
-                    key: 'tab',
-                    className: 'area-overflow-tab',
-                    onClick: () => setShowOverflowMenu(!showOverflowMenu)
-                  }, '⋯'),
-                  
-                  showOverflowMenu ? React.createElement('div', { key: 'dropdown', className: 'area-overflow-dropdown' }, 
-                    overflowAreas.map(area => 
-                      React.createElement('div', { 
-                        key: area.id,
-                        className: `area-overflow-item ${selectedArea?.id === area.id ? 'active' : ''}`,
-                        onClick: () => {
-                          handleAreaTabSelect(area);
-                          setShowOverflowMenu(false);
-                        }
-                      }, [
-                        React.createElement('span', { key: 'name', className: 'area-tab-name' }, area.name),
-                        React.createElement('span', { key: 'count', className: 'area-tab-count' }, 
-                          formatCount(area.project_count || 0))
-                      ])
-                    )
-                  ) : null
-                ]) : null
+                })
               ]),
               
               // Projects for selected area
