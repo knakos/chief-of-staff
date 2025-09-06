@@ -133,7 +133,7 @@ class COSOrchestrator(BaseAgent):
         elif any(word in user_lower for word in ["plan", "planning", "organize", "schedule", "prioritize"]):
             # Add planning context
             active_projects = db.query(Project).filter(Project.status == "active").all()
-            pending_tasks = db.query(Task).filter(Task.status.in_(["pending", "in_progress"])).all()
+            pending_tasks = db.query(Task).filter(Task.status.in_(["not_started", "active"])).all()
             context.update({
                 "active_projects_count": len(active_projects),
                 "pending_tasks_count": len(pending_tasks),
@@ -167,7 +167,7 @@ class COSOrchestrator(BaseAgent):
         
         # Get active projects and tasks
         active_projects = db.query(Project).filter(Project.status == "active").all()
-        pending_tasks = db.query(Task).filter(Task.status.in_(["pending", "in_progress"])).all()
+        pending_tasks = db.query(Task).filter(Task.status.in_(["not_started", "active"])).all()
         # Email counts now handled directly via Outlook integration
         unprocessed_emails = 0  # Placeholder - would need Outlook query
         
@@ -265,7 +265,7 @@ class COSOrchestrator(BaseAgent):
         # Create interview record
         interview = Interview(
             question=question,
-            status="pending",
+            status="not_started",
             trigger_source="manual_request",
             importance_score=0.7
         )

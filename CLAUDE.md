@@ -246,6 +246,11 @@ This architecture ensures the system is responsive during active use while preve
 ### Critical Implementation Details
 - **🚨 OUTLOOK INTEGRATION RULE**: **ONLY USE LEGACY METHODS** - No batch processing, no optimized loading, no hybrid methods. Always use `_get_messages_legacy()` and standard property sync methods. Batch loaders and optimized methods are explicitly forbidden and break COS property loading.
 - **🚨 DESIGN TOKENS RULE**: **NEVER USE HARDCODED VALUES** - Always use CSS custom properties from `design/modern-tokens.css` for fonts, colors, spacing, etc. Use `var(--font-size-sm)`, `var(--font-weight-semibold)`, `var(--space-4)`, etc. instead of hardcoded values like `14px`, `600`, `16px`.
+- **🚨 TASK MANAGEMENT UPDATES (2025-09)**: Recent improvements to inline task editing and project count synchronization:
+  - **Inline Editing**: Tasks support direct click-to-edit on titles and objectives without context menu
+  - **DateTime Handling**: Backend properly handles datetime field parsing for task updates (created_at, due_date, completed_at)
+  - **Project Count Sync**: Task operations (create/delete/archive/restore) automatically refresh project task counts via `loadProjectsForArea()`
+  - **Status Consistency**: All task statuses use `not_started` instead of legacy `pending` status
 - **Prompt Management**: All prompts stored as `.md` files in `llm/prompts/` - these define the core AI intelligence behavior
 - **Multi-Agent Coordination**: COS Orchestrator routes commands, specialized agents handle domain-specific tasks
 - **Interview Limits**: Context interviews limited to ≤1 per day to avoid user fatigue
@@ -398,6 +403,31 @@ const [projectsLoading, setProjectsLoading] = useState(false);
 - Active → Blocked: "Implement API" hits missing dependency
 - Blocked → Active: Dependency resolved, work resumes
 - Active → Dropped: "Research competitor X" becomes irrelevant mid-work
+
+### Task Creation & Editing Workflow
+
+#### **+Task Button Functionality:**
+- **Creates task at TOP of stack** - New tasks appear first in list using `[newTask, ...prev]`
+- **Automatic edit mode** - Task immediately enters editing mode with focus on title field
+- **Template settings**:
+  - Title: "New Task"
+  - Objective: "What needs to be accomplished" 
+  - Status: "not_started"
+  - Priority: 3 (medium)
+  - Empty sponsor/owner email fields
+
+#### **Inline Editing System:**
+- **Click-to-edit** - Direct click on task titles and objectives to enter edit mode
+- **Visual feedback** - Hover effects with `var(--bg-secondary)` and cursor pointer
+- **Tab navigation** - Proper focus flow between title → objective → sponsor → owner → Save
+- **Auto-save triggers** - Enter key or Save button to persist changes
+- **Real-time sync** - Project task counts update immediately after create/edit/delete operations
+
+#### **Technical Implementation Notes:**
+- Frontend filters `created_at` and `updated_at` from PUT requests (backend manages these)
+- All task operations call both `loadTasksForProject()` and `loadProjectsForArea()` to maintain count sync
+- Templates use CSS class `editing-field template` for new task styling
+- Placeholders guide user input: "Who wants this done? (sponsor email)", "Who will do this work? (owner email)"
 
 ### Common Debugging Issues
 1. **Infinite Render Loops**: Remove state variables from useEffect dependencies if they're managed by the effect

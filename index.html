@@ -1173,6 +1173,17 @@
       color: var(--text-primary);
     }
 
+    .editable-field {
+      cursor: pointer;
+      padding: 2px 4px;
+      border-radius: 3px;
+      transition: background-color 0.2s;
+    }
+
+    .editable-field:hover {
+      background-color: var(--bg-secondary);
+    }
+
     .task-objective {
       margin: 0 0 8px 0;
       font-size: var(--font-size-sm);
@@ -2857,17 +2868,17 @@
         const newTask = {
           id: tempId,
           title: "New Task",
-          objective: "Task objective - what needs to be accomplished",
-          status: "pending",
+          objective: "What needs to be accomplished",
+          status: "not_started",
           priority: 3,
           project_id: selectedProject.id,
-          sponsor_email: "sponsor@example.com",
-          owner_email: "owner@example.com",
+          sponsor_email: "",
+          owner_email: "",
           is_editing: true,
           is_new: true
         };
 
-        setTasks(prev => [...prev, newTask]);
+        setTasks(prev => [newTask, ...prev]);
         setEditingItems(prev => ({
           ...prev,
           tasks: new Set([...prev.tasks, tempId])
@@ -2882,6 +2893,8 @@
       };
 
       const saveItem = async (type, item) => {
+        console.log(`🔄 saveItem called: type=${type}, itemId=${item?.id}, item=`, item);
+        
         // Prevent multiple concurrent saves for the same item
         const itemKey = item.id;
         const typeKey = type + 's';
@@ -2904,6 +2917,14 @@
           
           const isNewItem = item.is_new || item.id.startsWith('temp_');
           delete itemData.is_new;
+          
+          // For task updates, don't send read-only fields
+          if (type === 'task' && !isNewItem) {
+            delete itemData.created_at;  // Don't update created_at on existing tasks
+            delete itemData.updated_at;  // Backend will set this automatically
+          }
+          
+          console.log(`🔍 Processing save: type=${type}, isNewItem=${isNewItem}, itemData=`, itemData);
           
           if (isNewItem) {
             // Creating new item - use POST and let backend generate ID
@@ -2946,11 +2967,14 @@
                 body: JSON.stringify(itemData)
               });
             } else if (type === 'task') {
+              console.log(`Sending PUT request for task ${itemId} with data:`, itemData);
               response = await fetch(`http://127.0.0.1:8787/api/tasks/${itemId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(itemData)
               });
+              const responseData = await response.clone().json();
+              console.log(`PUT response for task ${itemId}:`, responseData);
             }
           }
 
@@ -2967,6 +2991,8 @@
               await loadProjectsForArea(selectedArea.id);
             } else if (type === 'task') {
               await loadTasksForProject(selectedProject.id);
+              // Also reload project data to update task counts
+              await loadProjectsForArea(selectedArea.id);
             }
             
             // Clear editing state
@@ -3100,8 +3126,9 @@
           });
           const result = await response.json();
           if (result.success) {
-            // Reload tasks
+            // Reload tasks and project data to update counts
             await loadTasksForProject(selectedProject.id);
+            await loadProjectsForArea(selectedArea.id);
           } else {
             console.error('Failed to archive task:', result.error);
           }
@@ -3117,8 +3144,9 @@
           });
           const result = await response.json();
           if (result.success) {
-            // Reload tasks
+            // Reload tasks and project data to update counts
             await loadTasksForProject(selectedProject.id);
+            await loadProjectsForArea(selectedArea.id);
             if (selectedTask?.id === taskId) {
               setSelectedTask(null);
             }
@@ -3137,8 +3165,9 @@
           });
           const result = await response.json();
           if (result.success) {
-            // Reload tasks
+            // Reload tasks and project data to update counts
             await loadTasksForProject(selectedProject.id);
+            await loadProjectsForArea(selectedArea.id);
           } else {
             console.error('Failed to restore task:', result.error);
           }
@@ -4227,10 +4256,10 @@
                         className: `editing-field ${isNew ? 'template' : ''}`,
                         'data-field': `task-objective-${task.id}`,
                         value: task.objective,
-                        placeholder: 'Task objective',
+                        placeholder: 'What specific outcome should this task achieve?',
                         tabIndex: 0,
                         onFocus: (e) => {
-                          if (isNew && e.target.value === "Task objective - what needs to be accomplished") {
+                          if (isNew && e.target.value === "What needs to be accomplished") {
                             e.target.select();
                           }
                         },
@@ -4253,11 +4282,11 @@
                         className: `editing-field ${isNew ? 'template' : ''}`,
                         'data-field': `task-sponsor-${task.id}`,
                         value: task.sponsor_email,
-                        placeholder: 'Sponsor email',
+                        placeholder: 'Who wants this done? (sponsor email)',
                         tabIndex: 0,
                         onFocus: (e) => {
-                          if (isNew && e.target.value === "sponsor@example.com") {
-                            e.target.select();
+                          if (isNew && e.target.value === "") {
+                            // Focus on empty field - no need to select
                           }
                         },
                         onChange: (e) => {
@@ -4279,11 +4308,11 @@
                         className: `editing-field ${isNew ? 'template' : ''}`,
                         'data-field': `task-owner-${task.id}`,
                         value: task.owner_email,
-                        placeholder: 'Owner email',
+                        placeholder: 'Who will do this work? (owner email)',
                         tabIndex: 0,
                         onFocus: (e) => {
-                          if (isNew && e.target.value === "owner@example.com") {
-                            e.target.select();
+                          if (isNew && e.target.value === "") {
+                            // Focus on empty field - no need to select
                           }
                         },
                         onChange: (e) => {
@@ -4358,8 +4387,24 @@
                   onContextMenu: (e) => showContextMenu(e, 'task', task)
                 }, [
                   React.createElement('div', { key: 'content', className: 'task-content' }, [
-                    React.createElement('h4', { key: 'title', className: 'task-title' }, task.title),
-                    React.createElement('p', { key: 'objective', className: 'task-objective' }, task.objective || 'No objective defined'),
+                    React.createElement('h4', { 
+                      key: 'title', 
+                      className: 'task-title editable-field',
+                      onClick: (e) => {
+                        e.stopPropagation();
+                        startEditingItem('task', task.id);
+                      },
+                      title: 'Click to edit title'
+                    }, task.title),
+                    React.createElement('p', { 
+                      key: 'objective', 
+                      className: 'task-objective editable-field',
+                      onClick: (e) => {
+                        e.stopPropagation();
+                        startEditingItem('task', task.id);
+                      },
+                      title: 'Click to edit objective'
+                    }, task.objective || 'Click to add objective'),
                     React.createElement('div', { 
                       key: 'priority', 
                       className: 'task-priority',

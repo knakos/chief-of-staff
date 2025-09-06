@@ -128,7 +128,7 @@ def init_database(add_sample_data: bool = True):
                 Task(
                     title="Review client feedback on proposal",
                     objective="Ensure ABC Corp proposal aligns with client expectations and address concerns",
-                    status="pending",
+                    status="not_started",
                     priority=1,
                     project_id=project1.id,
                     sponsor_email="manager@company.com",
@@ -148,7 +148,7 @@ def init_database(add_sample_data: bool = True):
                 Task(
                     title="Design mockups for homepage",
                     objective="Create visually appealing homepage that improves user engagement by 25%",
-                    status="pending",
+                    status="not_started",
                     priority=2,
                     project_id=project2.id,
                     sponsor_email="marketing@company.com",
@@ -169,7 +169,7 @@ def init_database(add_sample_data: bool = True):
                 Task(
                     title="Review quarterly expense report",
                     objective="Ensure Q1 expenses are properly categorized and within budget",
-                    status="pending",
+                    status="not_started",
                     priority=2,
                     project_id=work_tasks.id,
                     sponsor_email="finance@company.com",
@@ -179,7 +179,7 @@ def init_database(add_sample_data: bool = True):
                 Task(
                     title="Schedule dentist appointment", 
                     objective="Maintain good oral health with routine 6-month cleaning",
-                    status="pending",
+                    status="not_started",
                     priority=3,
                     project_id=personal_tasks.id,
                     sponsor_email="self@personal.com",
@@ -199,7 +199,7 @@ def init_database(add_sample_data: bool = True):
                 Task(
                     title="Pick tile for bathroom",
                     objective="Select durable and stylish tiles that match overall design vision",
-                    status="pending", 
+                    status="not_started", 
                     priority=2,
                     project_id=personal_project1.id,
                     sponsor_email="self@personal.com",
@@ -243,7 +243,7 @@ def init_database(add_sample_data: bool = True):
             # Create a sample interview
             interview = Interview(
                 question="What's your biggest priority for Project Alpha this week?",
-                status="pending",
+                status="not_started",
                 trigger_source="context_gap",
                 importance_score=0.8,
                 project_id=project1.id

@@ -535,7 +535,7 @@ class WSMessageHandler:
                 project_count = self.db.query(Project).filter_by(area_id=area.id).count()
                 active_task_count = self.db.query(Task).join(Project).filter(
                     Project.area_id == area.id,
-                    Task.status.in_(['pending', 'in_progress'])
+                    Task.status.in_(['not_started', 'active'])
                 ).count()
                 
                 areas.append({
@@ -563,7 +563,7 @@ class WSMessageHandler:
                 # Get next due task
                 next_due_task = None
                 next_task = self.db.query(Task).filter_by(project_id=project.id)\
-                    .filter(Task.status.in_(['pending', 'in_progress']))\
+                    .filter(Task.status.in_(['not_started', 'active']))\
                     .filter(Task.due_date.isnot(None))\
                     .order_by(Task.due_date).first()
                 
@@ -1174,7 +1174,7 @@ async def create_task(task_data: dict, db: Session = Depends(get_db)):
             title=task_data["title"],
             objective=task_data.get("objective", ""),
             project_id=task_data["project_id"],
-            status=task_data.get("status", "pending"),
+            status=task_data.get("status", "not_started"),
             priority=task_data.get("priority", 3),
             due_date=datetime.fromisoformat(task_data["due_date"]) if task_data.get("due_date") else None,
             sponsor_email=task_data.get("sponsor_email"),
@@ -1191,29 +1191,55 @@ async def create_task(task_data: dict, db: Session = Depends(get_db)):
 @app.put("/api/tasks/{task_id}")
 async def update_task(task_id: str, task_data: dict, db: Session = Depends(get_db)):
     """Update existing task"""
+    logger.info(f"Updating task {task_id} with data: {task_data}")
     try:
         task = db.query(Task).filter_by(id=task_id).first()
         if not task:
+            logger.error(f"Task not found: {task_id}")
             return {"success": False, "error": "Task not found"}
+        
+        # Store original values for logging
+        original_values = {
+            "title": task.title,
+            "objective": task.objective,
+            "status": task.status,
+            "priority": task.priority,
+            "sponsor_email": task.sponsor_email,
+            "owner_email": task.owner_email
+        }
         
         # Update fields
         for field, value in task_data.items():
             if field == "due_date" and value:
                 setattr(task, field, datetime.fromisoformat(value))
+                logger.info(f"Updated {field}: {value}")
             elif field == "completed_at" and value:
                 setattr(task, field, datetime.fromisoformat(value))
-            elif hasattr(task, field):
+                logger.info(f"Updated {field}: {value}")
+            elif field == "created_at" and value and isinstance(value, str):
+                setattr(task, field, datetime.fromisoformat(value))
+                logger.info(f"Updated {field}: {value}")
+            elif hasattr(task, field) and field not in ["created_at"]:  # Skip created_at since it's handled above
                 setattr(task, field, value)
+                logger.info(f"Updated {field}: {original_values.get(field, 'N/A')} -> {value}")
         
         # Set completed_at when status changes to completed
         if task_data.get("status") == "completed" and not task.completed_at:
             task.completed_at = datetime.utcnow()
+            logger.info(f"Auto-set completed_at: {task.completed_at}")
         elif task_data.get("status") != "completed":
+            if task.completed_at:
+                logger.info("Cleared completed_at because status is not completed")
             task.completed_at = None
         
+        # Update the updated_at timestamp
+        task.updated_at = datetime.utcnow()
+        
         db.commit()
+        logger.info(f"Successfully updated task {task_id}")
         return {"success": True}
     except Exception as e:
+        logger.error(f"Error updating task {task_id}: {e}")
         db.rollback()
         return {"success": False, "error": str(e)}
 
