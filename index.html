@@ -781,7 +781,7 @@
 
     .area-tabs-header h3 {
       margin: 0;
-      font-size: 16px;
+      font-size: 18px;
       font-weight: 600;
       color: var(--text-primary);
     }
@@ -814,11 +814,9 @@
       cursor: pointer;
       transition: all 0.2s ease;
       user-select: none;
-      position: relative;
       white-space: nowrap;
       flex-shrink: 0;
-      min-width: 120px;
-      max-width: 200px;
+      width: 160px; /* Fixed width to prevent different sizes */
     }
 
     .area-tab:hover {
@@ -842,15 +840,6 @@
       background: rgba(59, 130, 246, 0.05);
     }
 
-    .area-tab-content {
-      display: flex;
-      flex-direction: row;
-      align-items: center;
-      flex: 1;
-      min-width: 0;
-      gap: 8px;
-    }
-
     .area-tab-name {
       font-weight: var(--font-weight-semibold);
       font-size: var(--font-size-sm);
@@ -859,6 +848,7 @@
       overflow: hidden;
       text-overflow: ellipsis;
       flex: 1;
+      margin-right: 8px;
     }
 
     .area-tab.active .area-tab-name {
@@ -867,11 +857,18 @@
 
     .area-tab-count {
       font-size: 11px;
-      color: var(--text-muted);
-      background: var(--surface-hover);
-      padding: 2px 6px;
-      border-radius: 10px;
+      color: white;
+      background: var(--brand-primary);
+      padding: 3px 7px;
+      border-radius: 14px;
       white-space: nowrap;
+      min-width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      line-height: 1;
       flex-shrink: 0;
     }
 
@@ -963,9 +960,46 @@
       color: var(--brand-primary);
     }
 
+    /* Projects Section Styling */
+    .projects-section {
+      margin-top: 20px;
+    }
+
+    .projects-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      padding-left: 0; /* Align with area tabs */
+    }
+
+    .projects-header h4 {
+      margin: 0;
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-semibold);
+      color: var(--text-primary);
+    }
+
     .projects-list {
       margin-top: 8px;
-      padding-left: 16px;
+      padding-left: 0; /* Align with area tabs - no additional indent */
+    }
+
+    /* Tasks Header Styling - matches projects-header */
+    .tasks-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .tasks-header h3 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-primary);
     }
 
     .project-actions {
@@ -974,7 +1008,6 @@
 
     .project-item {
       display: flex;
-      justify-content: space-between;
       align-items: center;
       padding: 8px 12px;
       margin-bottom: 4px;
@@ -998,6 +1031,15 @@
       font-weight: var(--font-weight-semibold);
       color: var(--text-primary);
       font-size: var(--font-size-sm);
+      flex: 1;
+      margin-right: 8px;
+    }
+
+    .project-priority {
+      margin-right: 8px;
+      font-size: 9px;
+      width: 60px;
+      flex-shrink: 0;
     }
 
     .project-status, .task-status {
@@ -1006,6 +1048,19 @@
       font-size: 10px;
       font-weight: 600;
       text-transform: uppercase;
+      flex-shrink: 0;
+      width: 70px;
+      text-align: center;
+    }
+    
+    .project-status {
+      margin-right: 8px;
+    }
+    
+    .task-status {
+      min-width: 80px;
+      text-align: center;
+      align-self: center;
     }
 
     .status-active {
@@ -1045,7 +1100,19 @@
 
     .project-task-count {
       font-size: 11px;
-      color: var(--text-muted);
+      color: white;
+      background: var(--brand-primary);
+      padding: 3px 7px;
+      border-radius: 14px;
+      white-space: nowrap;
+      min-width: 20px;
+      height: 20px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      line-height: 1;
+      margin-left: 8px;
     }
 
     /* Task List */
@@ -1063,6 +1130,7 @@
       border-radius: var(--radius);
       cursor: pointer;
       transition: all 0.2s ease;
+      position: relative;
     }
 
     .task-item:hover {
@@ -1075,9 +1143,27 @@
       border-color: var(--brand-primary);
     }
 
+    .task-item.saving {
+      opacity: 0.7;
+      pointer-events: none;
+    }
+
+    .task-item.saving::after {
+      content: "Saving...";
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 12px;
+      color: var(--text-secondary);
+      background: var(--surface);
+      padding: 2px 6px;
+      border-radius: 4px;
+      z-index: 10;
+    }
+
     .task-content {
       flex: 1;
-      margin-left: 12px;
     }
 
     .task-title {
@@ -1087,7 +1173,7 @@
       color: var(--text-primary);
     }
 
-    .task-description {
+    .task-objective {
       margin: 0 0 8px 0;
       font-size: var(--font-size-sm);
       color: var(--text-secondary);
@@ -1100,12 +1186,355 @@
       flex-wrap: wrap;
     }
 
-    .task-sponsor, .task-owner, .task-due {
-      font-size: 11px;
+    .task-sponsor, .task-owner, .task-due, .task-priority {
+      font-size: var(--font-size-xs);
       color: var(--text-muted);
       padding: 2px 6px;
       background: var(--surface);
       border-radius: 4px;
+      margin-top: 4px;
+      margin-right: 8px;
+      display: inline-block;
+    }
+    
+    /* Priority-specific styling */
+    .task-priority[data-priority="1"] {
+      background: rgba(239, 68, 68, 0.1);
+      color: rgb(239, 68, 68);
+      font-weight: 600;
+    }
+    
+    .task-priority[data-priority="2"] {
+      background: rgba(245, 158, 11, 0.1);
+      color: rgb(245, 158, 11);
+      font-weight: 500;
+    }
+    
+    .task-priority[data-priority="3"],
+    .task-priority[data-priority="4"],
+    .task-priority[data-priority="5"] {
+      background: rgba(107, 114, 128, 0.1);
+      color: rgb(107, 114, 128);
+      font-weight: 400;
+    }
+
+    .status-archived {
+      background: rgba(107, 114, 128, 0.2);
+      color: rgb(107, 114, 128);
+    }
+
+    /* Context Menu Styles */
+    .context-menu {
+      position: absolute;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-lg);
+      padding: 4px 0;
+      min-width: 160px;
+      z-index: 1000;
+      font-size: var(--font-size-sm);
+    }
+
+    .context-menu-item {
+      display: flex;
+      align-items: center;
+      padding: 8px 12px;
+      cursor: pointer;
+      transition: background-color var(--duration-fast) var(--ease);
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+      color: var(--text-primary);
+    }
+
+    .context-menu-item:hover {
+      background: var(--surface-hover);
+    }
+
+    .context-menu-item.destructive {
+      color: var(--error);
+    }
+
+    .context-menu-item.destructive:hover {
+      background: var(--error-bg);
+    }
+
+    /* Confirmation Dialog */
+    .confirmation-dialog-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+    }
+
+    .confirmation-dialog {
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      min-width: 400px;
+      max-width: 500px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+    }
+
+    .confirmation-dialog-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .confirmation-dialog-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      font-weight: bold;
+    }
+
+    .confirmation-dialog-icon.warning {
+      background: rgba(245, 158, 11, 0.2);
+      color: #f59e0b;
+    }
+
+    .confirmation-dialog-icon.danger {
+      background: rgba(239, 68, 68, 0.2);
+      color: #ef4444;
+    }
+
+    .confirmation-dialog-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin: 0;
+    }
+
+    .confirmation-dialog-message {
+      color: var(--text-secondary);
+      font-size: 14px;
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+
+    .confirmation-dialog-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+
+    .confirmation-dialog-button {
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s ease;
+    }
+
+    .confirmation-dialog-button.cancel {
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+    }
+
+    .confirmation-dialog-button.cancel:hover {
+      background: var(--surface-hover);
+    }
+
+    .confirmation-dialog-button.confirm {
+      background: var(--brand-primary);
+      color: white;
+    }
+
+    .confirmation-dialog-button.confirm:hover {
+      background: var(--brand-hover);
+    }
+
+    .confirmation-dialog-button.danger {
+      background: var(--error-bg);
+      color: var(--error);
+    }
+
+    .confirmation-dialog-button.danger:hover {
+      background: rgba(239, 68, 68, 0.8);
+      color: white;
+    }
+
+    /* Archive Sections */
+    .archive-section {
+      margin-top: 16px;
+      border-top: 1px solid var(--border);
+      padding-top: 16px;
+    }
+
+    .archive-section-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 14px;
+      font-weight: 500;
+      border-radius: var(--radius);
+      transition: all 0.2s ease;
+    }
+
+    .archive-section-header:hover {
+      background: var(--surface-hover);
+      color: var(--text-secondary);
+    }
+
+    .archive-section-chevron {
+      width: 16px;
+      height: 16px;
+      transition: transform 0.2s ease;
+    }
+
+    .archive-section-chevron.expanded {
+      transform: rotate(90deg);
+    }
+
+    .archive-section-content {
+      margin-top: 8px;
+      overflow: hidden;
+    }
+
+    .archive-section-content.collapsed {
+      display: none;
+    }
+
+    .archive-section-item {
+      opacity: 0.7;
+    }
+
+    .archive-section-item:hover {
+      opacity: 1;
+    }
+
+    .archive-section-count {
+      background: var(--bg-secondary);
+      color: var(--text-muted);
+      font-size: 12px;
+      padding: 2px 6px;
+      border-radius: 12px;
+      min-width: 18px;
+      text-align: center;
+    }
+
+    /* Inline Editing */
+    .item-editing {
+      background: rgba(59, 130, 246, 0.05) !important;
+      border: 1px solid var(--brand-primary) !important;
+      outline: none;
+    }
+
+    .editing-field {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: inherit;
+      font-weight: inherit;
+      padding: 2px 4px;
+      border-radius: 4px;
+      width: 100%;
+      transition: all 0.2s ease;
+    }
+
+    .editing-field:focus {
+      background: var(--bg-primary);
+      border-color: var(--brand-primary);
+      outline: none;
+    }
+
+    .editing-field.template {
+      color: var(--text-muted);
+      font-style: italic;
+    }
+
+    .editing-field.template:focus {
+      color: var(--text-primary);
+      font-style: normal;
+    }
+
+    .editing-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+
+    .editing-actions .btn {
+      padding: 4px 12px;
+      font-size: 12px;
+    }
+
+    .area-tab.editing {
+      background: rgba(59, 130, 246, 0.1);
+      border-color: var(--brand-primary);
+    }
+
+    .area-tab .editing-field {
+      background: transparent;
+      border: none;
+      font-size: 13px;
+      font-weight: 500;
+      text-align: center;
+      min-width: 60px;
+    }
+
+    .area-editing-form {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: var(--bg-primary);
+      border: 1px solid var(--brand-primary);
+      border-radius: 8px;
+      padding: 12px;
+      z-index: 1000;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      min-width: 300px;
+    }
+
+    .area-editing-form textarea {
+      resize: vertical;
+      min-height: 60px;
+      margin: 8px 0;
+    }
+
+    .area-editing-form input[type="color"] {
+      width: 40px;
+      height: 32px;
+      padding: 0;
+      margin: 8px 0;
+    }
+
+    .context-menu-separator {
+      height: 1px;
+      background: var(--border);
+      margin: 4px 0;
+    }
+
+    .context-menu-icon {
+      width: 16px;
+      height: 16px;
+      margin-right: 8px;
+      flex-shrink: 0;
     }
 
     .no-tasks {
@@ -1164,7 +1593,7 @@
     }
 
     /* Assessment flags with uniform height */
-    .assessment-flag {
+    .assessment-flag, .priority-badge {
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -1474,14 +1903,28 @@
       const [visibleTabsCount, setVisibleTabsCount] = useState(8);
       const [showOverflowMenu, setShowOverflowMenu] = useState(false);
       const [draggedTab, setDraggedTab] = useState(null);
-      const [selectedTask, setSelectedTask] = useState(null);
-      const [projectsLoading, setProjectsLoading] = useState(false);
-      const [showNewAreaForm, setShowNewAreaForm] = useState(false);
-      const [showNewProjectForm, setShowNewProjectForm] = useState(false);
-      const [showNewTaskForm, setShowNewTaskForm] = useState(false);
       
       // Context menu state
-      const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, email: null });
+      const [contextMenu, setContextMenu] = useState(null);
+      const [showConfirmDialog, setShowConfirmDialog] = useState(null);
+      const [selectedTask, setSelectedTask] = useState(null);
+      const [projectsLoading, setProjectsLoading] = useState(false);
+      const [expandedArchiveSections, setExpandedArchiveSections] = useState({
+        projects: false,
+        tasks: false
+      });
+      const [editingItems, setEditingItems] = useState({
+        areas: new Set(),
+        projects: new Set(), 
+        tasks: new Set()
+      });
+      
+      // State for saving items (prevent multiple concurrent saves)
+      const [savingItems, setSavingItems] = useState({
+        areas: new Set(),
+        projects: new Set(),
+        tasks: new Set()
+      });
       
       const wsRef = useRef(null);
       const messagesEndRef = useRef(null);
@@ -1979,10 +2422,10 @@
 
       // Handle context menu interactions
       useEffect(() => {
-        const handleClick = () => setContextMenu({ visible: false, x: 0, y: 0, email: null });
-        const handleScroll = () => setContextMenu({ visible: false, x: 0, y: 0, email: null });
+        const handleClick = () => setContextMenu(null);
+        const handleScroll = () => setContextMenu(null);
         
-        if (contextMenu.visible) {
+        if (contextMenu) {
           document.addEventListener('click', handleClick);
           document.addEventListener('scroll', handleScroll, true);
           return () => {
@@ -1990,10 +2433,10 @@
             document.removeEventListener('scroll', handleScroll, true);
           };
         }
-      }, [contextMenu.visible]);
+      }, [contextMenu]);
 
       const handleContextMenuAction = (action, email) => {
-        setContextMenu({ visible: false, x: 0, y: 0, email: null });
+        setContextMenu(null);
         
         if (action === 'reprocess' && email && !email.isProcessing) {
           // Force re-analysis by clearing existing analysis first
@@ -2124,6 +2567,18 @@
       };
 
       // Helper function to get assessment flag colors and text colors
+      const getPriorityText = (priority) => {
+        // Convert numeric priority (1-5) to text
+        switch (parseInt(priority)) {
+          case 1: return 'Ultra';
+          case 2: return 'High';
+          case 3: return 'Medium';
+          case 4: return 'Low';
+          case 5: return 'Base';
+          default: return 'Medium';
+        }
+      };
+
       const getAssessmentStyle = (type, value) => {
         // Always show "Unassessed" in grey
         if (value === 'Unassessed' || !value) {
@@ -2137,11 +2592,11 @@
         // Make case-insensitive for consistency
         const lowerValue = value.toLowerCase();
         
-        // Priority levels: 🟢 Low (green) -> 🟠 Medium (amber) -> 🔴 High (red)
+        // Priority levels: 🟢 Base/Low (green) -> 🟠 Medium (amber) -> 🔴 High/Ultra (red)
         if (type === 'priority') {
-          if (lowerValue === 'high') return { background: '#fecaca', color: '#dc2626', border: '1px solid #fca5a5' };
+          if (lowerValue === 'ultra' || lowerValue === 'high') return { background: '#fecaca', color: '#dc2626', border: '1px solid #fca5a5' };
           if (lowerValue === 'medium') return { background: '#fed7aa', color: '#ea580c', border: '1px solid #fdba74' };
-          if (lowerValue === 'low') return { background: '#bbf7d0', color: '#059669', border: '1px solid #86efac' };
+          if (lowerValue === 'low' || lowerValue === 'base') return { background: '#bbf7d0', color: '#059669', border: '1px solid #86efac' };
         }
         
         // Urgency levels: 🟢 Low (green) -> 🟠 Medium (amber) -> 🔴 High/Immediate (red)
@@ -2267,6 +2722,629 @@
           console.error('Error loading area projects:', error);
         }
       };
+
+      // Project display utility functions
+      const getSortedProjects = (projectsList) => {
+        if (!projectsList) return [];
+        
+        // Sort projects: catch-all "Tasks" first, then others alphabetically
+        return [...projectsList].sort((a, b) => {
+          // Catch-all projects first
+          if (a.is_catch_all && !b.is_catch_all) return -1;
+          if (!a.is_catch_all && b.is_catch_all) return 1;
+          
+          // Then sort alphabetically
+          return a.name.localeCompare(b.name);
+        });
+      };
+
+      const getProjectDisplayName = (project, area) => {
+        // Rename catch-all "Tasks" projects to "Area Tasks"
+        if (project.is_catch_all && project.name === 'Tasks') {
+          return `${area?.name || 'Area'} Tasks`;
+        }
+        return project.name;
+      };
+      
+      const getStatusDisplayText = (status) => {
+        const statusMap = {
+          'not_started': 'Not Started',
+          'in_progress': 'In Progress', 
+          'active': 'Active',
+          'blocked': 'Blocked',
+          'completed': 'Completed',
+          'dropped': 'Dropped',
+          'paused': 'Paused',
+          'planning': 'Planning',
+          'archived': 'Archived'
+        };
+        return statusMap[status] || status;
+      };
+      
+      const formatCount = (count) => {
+        const num = Number(count) || 0;
+        return num > 99 ? ':)' : String(num);
+      };
+
+      // Context menu helper functions
+      const showContextMenu = (event, type, item) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setContextMenu({
+          x: event.pageX,
+          y: event.pageY,
+          type,
+          item
+        });
+      };
+
+      const showConfirmationDialog = (config) => {
+        setShowConfirmDialog(config);
+      };
+
+      const hideConfirmationDialog = () => {
+        setShowConfirmDialog(null);
+      };
+
+      const toggleArchiveSection = (section) => {
+        setExpandedArchiveSections(prev => ({
+          ...prev,
+          [section]: !prev[section]
+        }));
+      };
+
+      // Inline editing helpers
+      const createNewArea = async () => {
+        const tempId = `temp_${Date.now()}`;
+        const newArea = {
+          id: tempId,
+          name: "New Area",
+          description: "Area description",
+          color: "#6366F1",
+          is_editing: true,
+          is_new: true
+        };
+
+        setAreas(prev => [...prev, newArea]);
+        setEditingItems(prev => ({
+          ...prev,
+          areas: new Set([...prev.areas, tempId])
+        }));
+
+        // Focus the name field after render
+        setTimeout(() => {
+          const nameField = document.querySelector(`input[data-field="area-name-${tempId}"]`);
+          if (nameField) {
+            nameField.select();
+          }
+        }, 50);
+      };
+
+      const createNewProject = async () => {
+        if (!selectedArea) return;
+        
+        const tempId = `temp_${Date.now()}`;
+        const newProject = {
+          id: tempId,
+          name: "New Project",
+          description: "Project description",
+          status: "active",
+          priority: 3,
+          area_id: selectedArea.id,
+          is_editing: true,
+          is_new: true,
+          task_count: 0
+        };
+
+        setProjects(prev => [...prev, newProject]);
+        setEditingItems(prev => ({
+          ...prev,
+          projects: new Set([...prev.projects, tempId])
+        }));
+
+        setTimeout(() => {
+          const nameField = document.querySelector(`input[data-field="project-name-${tempId}"]`);
+          if (nameField) {
+            nameField.select();
+          }
+        }, 50);
+      };
+
+      const createNewTask = async () => {
+        if (!selectedProject) return;
+        
+        const tempId = `temp_${Date.now()}`;
+        const newTask = {
+          id: tempId,
+          title: "New Task",
+          objective: "Task objective - what needs to be accomplished",
+          status: "pending",
+          priority: 3,
+          project_id: selectedProject.id,
+          sponsor_email: "sponsor@example.com",
+          owner_email: "owner@example.com",
+          is_editing: true,
+          is_new: true
+        };
+
+        setTasks(prev => [...prev, newTask]);
+        setEditingItems(prev => ({
+          ...prev,
+          tasks: new Set([...prev.tasks, tempId])
+        }));
+
+        setTimeout(() => {
+          const titleField = document.querySelector(`input[data-field="task-title-${tempId}"]`);
+          if (titleField) {
+            titleField.select();
+          }
+        }, 50);
+      };
+
+      const saveItem = async (type, item) => {
+        // Prevent multiple concurrent saves for the same item
+        const itemKey = item.id;
+        const typeKey = type + 's';
+        
+        if (savingItems[typeKey].has(itemKey)) {
+          console.log(`Already saving ${type} ${itemKey}, ignoring duplicate save request`);
+          return;
+        }
+        
+        // Mark item as being saved
+        setSavingItems(prev => ({
+          ...prev,
+          [typeKey]: new Set([...prev[typeKey], itemKey])
+        }));
+        
+        try {
+          let response;
+          const itemData = { ...item };
+          delete itemData.is_editing;
+          
+          const isNewItem = item.is_new || item.id.startsWith('temp_');
+          delete itemData.is_new;
+          
+          if (isNewItem) {
+            // Creating new item - use POST and let backend generate ID
+            delete itemData.id;
+            
+            if (type === 'area') {
+              response = await fetch('http://127.0.0.1:8787/api/areas', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(itemData)
+              });
+            } else if (type === 'project') {
+              response = await fetch('http://127.0.0.1:8787/api/projects', {
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(itemData)
+              });
+            } else if (type === 'task') {
+              response = await fetch('http://127.0.0.1:8787/api/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(itemData)
+              });
+            }
+          } else {
+            // Updating existing item - use PUT with ID in URL
+            const itemId = itemData.id;
+            delete itemData.id; // Don't send ID in body
+            
+            if (type === 'area') {
+              response = await fetch(`http://127.0.0.1:8787/api/areas/${itemId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(itemData)
+              });
+            } else if (type === 'project') {
+              response = await fetch(`http://127.0.0.1:8787/api/projects/${itemId}`, {
+                method: 'PUT', 
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(itemData)
+              });
+            } else if (type === 'task') {
+              response = await fetch(`http://127.0.0.1:8787/api/tasks/${itemId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(itemData)
+              });
+            }
+          }
+
+          if (response && response.ok) {
+            // For successful saves, keep the current local state instead of reloading from server
+            // This ensures the UI shows the updated values immediately
+            console.log(`Successfully saved ${type} ${item.id} (isNewItem: ${isNewItem})`);
+            
+            // Always reload from server to confirm the save worked and get latest data
+            console.log(`Reloading ${type} data to confirm save (isNewItem: ${isNewItem})`);
+            if (type === 'area') {
+              await loadAreas();
+            } else if (type === 'project') {
+              await loadProjectsForArea(selectedArea.id);
+            } else if (type === 'task') {
+              await loadTasksForProject(selectedProject.id);
+            }
+            
+            // Clear editing state
+            setEditingItems(prev => ({
+              ...prev,
+              [type + 's']: new Set([...prev[type + 's']].filter(id => id !== item.id))
+            }));
+          } else {
+            console.error(`Failed to save ${type}:`, response ? await response.text() : 'No response');
+          }
+        } catch (error) {
+          console.error(`Error saving ${type}:`, error);
+        } finally {
+          // Always clear saving state, even on error
+          setSavingItems(prev => ({
+            ...prev,
+            [typeKey]: new Set([...prev[typeKey]].filter(id => id !== itemKey))
+          }));
+        }
+      };
+
+      const cancelEdit = (type, itemId) => {
+        // Remove from editing state
+        setEditingItems(prev => ({
+          ...prev,
+          [type + 's']: new Set([...prev[type + 's']].filter(id => id !== itemId))
+        }));
+
+        // Remove temp items
+        if (itemId.startsWith('temp_')) {
+          if (type === 'area') {
+            setAreas(prev => prev.filter(a => a.id !== itemId));
+          } else if (type === 'project') {
+            setProjects(prev => prev.filter(p => p.id !== itemId));
+          } else if (type === 'task') {
+            setTasks(prev => prev.filter(t => t.id !== itemId));
+          }
+        }
+      };
+
+      const startEditingItem = (type, itemId) => {
+        // Add to editing state
+        setEditingItems(prev => ({
+          ...prev,
+          [type + 's']: new Set([...prev[type + 's'], itemId])
+        }));
+
+        // Focus the appropriate field after render
+        setTimeout(() => {
+          let fieldSelector;
+          if (type === 'area') {
+            fieldSelector = `input[data-field="area-name-${itemId}"]`;
+          } else if (type === 'project') {
+            fieldSelector = `input[data-field="project-name-${itemId}"]`;
+          } else if (type === 'task') {
+            fieldSelector = `input[data-field="task-title-${itemId}"]`;
+          }
+          
+          const field = document.querySelector(fieldSelector);
+          if (field) {
+            field.focus();
+            field.select();
+          }
+        }, 50);
+      };
+
+      const hideContextMenu = () => {
+        setContextMenu(null);
+      };
+
+      // Archive/delete functions
+      const archiveProject = async (projectId) => {
+        try {
+          const response = await fetch(`http://127.0.0.1:8787/api/projects/${projectId}/archive`, {
+            method: 'PUT'
+          });
+          const result = await response.json();
+          if (result.success) {
+            // Reload project data
+            await loadProjectsForArea(selectedArea.id);
+            await loadTasksForProject(selectedProject?.id);
+          } else {
+            console.error('Failed to archive project:', result.error);
+          }
+        } catch (error) {
+          console.error('Error archiving project:', error);
+        }
+      };
+
+      const restoreProject = async (projectId) => {
+        try {
+          const response = await fetch(`http://127.0.0.1:8787/api/projects/${projectId}/restore`, {
+            method: 'PUT'
+          });
+          const result = await response.json();
+          if (result.success) {
+            // Reload project data
+            await loadProjectsForArea(selectedArea.id);
+            await loadTasksForProject(selectedProject?.id);
+          } else {
+            console.error('Failed to restore project:', result.error);
+          }
+        } catch (error) {
+          console.error('Error restoring project:', error);
+        }
+      };
+
+      const deleteProject = async (projectId) => {
+        try {
+          const response = await fetch(`http://127.0.0.1:8787/api/projects/${projectId}`, {
+            method: 'DELETE'
+          });
+          const result = await response.json();
+          if (result.success) {
+            // Reload project data
+            await loadProjectsForArea(selectedArea.id);
+            setSelectedProject(null);
+            setTasks([]);
+          } else {
+            console.error('Failed to delete project:', result.error);
+          }
+        } catch (error) {
+          console.error('Error deleting project:', error);
+        }
+      };
+
+      const archiveTask = async (taskId) => {
+        try {
+          const response = await fetch(`http://127.0.0.1:8787/api/tasks/${taskId}/archive`, {
+            method: 'PUT'
+          });
+          const result = await response.json();
+          if (result.success) {
+            // Reload tasks
+            await loadTasksForProject(selectedProject.id);
+          } else {
+            console.error('Failed to archive task:', result.error);
+          }
+        } catch (error) {
+          console.error('Error archiving task:', error);
+        }
+      };
+
+      const deleteTask = async (taskId) => {
+        try {
+          const response = await fetch(`http://127.0.0.1:8787/api/tasks/${taskId}`, {
+            method: 'DELETE'
+          });
+          const result = await response.json();
+          if (result.success) {
+            // Reload tasks
+            await loadTasksForProject(selectedProject.id);
+            if (selectedTask?.id === taskId) {
+              setSelectedTask(null);
+            }
+          } else {
+            console.error('Failed to delete task:', result.error);
+          }
+        } catch (error) {
+          console.error('Error deleting task:', error);
+        }
+      };
+
+      const restoreTask = async (taskId) => {
+        try {
+          const response = await fetch(`http://127.0.0.1:8787/api/tasks/${taskId}/restore`, {
+            method: 'PUT'
+          });
+          const result = await response.json();
+          if (result.success) {
+            // Reload tasks
+            await loadTasksForProject(selectedProject.id);
+          } else {
+            console.error('Failed to restore task:', result.error);
+          }
+        } catch (error) {
+          console.error('Error restoring task:', error);
+        }
+      };
+
+      // Context menu component
+      const renderContextMenu = () => {
+        if (!contextMenu) return null;
+
+        const getContextMenuItems = () => {
+          switch (contextMenu.type) {
+            case 'project':
+              const project = contextMenu.item;
+              if (project.status === 'archived') {
+                return [
+                  { label: 'Restore Project', action: () => restoreProject(project.id) },
+                  { label: 'separator' },
+                  { label: 'Delete Permanently', action: () => showConfirmationDialog({
+                    type: 'danger',
+                    title: 'Delete Project Permanently',
+                    message: `Are you sure you want to permanently delete "${project.name}"? This action cannot be undone.`,
+                    confirmText: 'Delete Permanently',
+                    cancelText: 'Cancel',
+                    onConfirm: () => {
+                      deleteProject(project.id);
+                      hideConfirmationDialog();
+                    },
+                    onCancel: hideConfirmationDialog
+                  }), destructive: true }
+                ];
+              } else {
+                const items = [
+                  { label: 'Edit Project', action: () => startEditingItem('project', project.id) }
+                ];
+                
+                // Only allow archive for non-system projects
+                if (!project.is_system) {
+                  items.push(
+                    { label: 'separator' },
+                    { label: 'Archive Project', action: () => showConfirmationDialog({
+                      type: 'warning',
+                      title: 'Archive Project',
+                      message: `Are you sure you want to archive "${project.name}"? It will be moved to the archived section and can be restored later.`,
+                      confirmText: 'Archive Project',
+                      cancelText: 'Cancel',
+                      onConfirm: () => {
+                        archiveProject(project.id);
+                        hideConfirmationDialog();
+                      },
+                      onCancel: hideConfirmationDialog
+                    }), destructive: true }
+                  );
+                }
+                
+                return items;
+              }
+              
+            case 'task':
+              const task = contextMenu.item;
+              if (task.status === 'archived') {
+                return [
+                  { label: 'Restore Task', action: () => restoreTask(task.id) },
+                  { label: 'separator' },
+                  { label: 'Delete Permanently', action: () => showConfirmationDialog({
+                    type: 'danger',
+                    title: 'Delete Task Permanently',
+                    message: `Are you sure you want to permanently delete "${task.title}"? This action cannot be undone.`,
+                    confirmText: 'Delete Permanently',
+                    cancelText: 'Cancel',
+                    onConfirm: () => {
+                      deleteTask(task.id);
+                      hideConfirmationDialog();
+                    },
+                    onCancel: hideConfirmationDialog
+                  }), destructive: true }
+                ];
+              } else {
+                return [
+                  { label: 'Edit Task', action: () => startEditingItem('task', task.id) },
+                  { label: 'separator' },
+                  { label: 'Archive Task', action: () => showConfirmationDialog({
+                    type: 'warning',
+                    title: 'Archive Task',
+                    message: `Are you sure you want to archive "${task.title}"? It will be moved to the archived section and can be restored later.`,
+                    confirmText: 'Archive Task',
+                    cancelText: 'Cancel',
+                    onConfirm: () => {
+                      archiveTask(task.id);
+                      hideConfirmationDialog();
+                    },
+                    onCancel: hideConfirmationDialog
+                  }) },
+                  { label: 'Delete Task', action: () => showConfirmationDialog({
+                    type: 'danger',
+                    title: 'Delete Task',
+                    message: `Are you sure you want to delete "${task.title}"? This action cannot be undone.`,
+                    confirmText: 'Delete Task',
+                    cancelText: 'Cancel',
+                    onConfirm: () => {
+                      deleteTask(task.id);
+                      hideConfirmationDialog();
+                    },
+                    onCancel: hideConfirmationDialog
+                  }), destructive: true }
+                ];
+              }
+              
+            default:
+              return [];
+          }
+        };
+
+        const menuItems = getContextMenuItems();
+
+        return React.createElement('div', {
+          className: 'context-menu',
+          style: {
+            left: contextMenu.x,
+            top: contextMenu.y
+          },
+          onMouseLeave: hideContextMenu
+        }, menuItems.map((item, index) => {
+          if (item.label === 'separator') {
+            return React.createElement('div', {
+              key: `separator-${index}`,
+              className: 'context-menu-separator'
+            });
+          }
+          
+          return React.createElement('button', {
+            key: item.label,
+            className: `context-menu-item ${item.destructive ? 'destructive' : ''}`,
+            onClick: () => {
+              item.action();
+              hideContextMenu();
+            }
+          }, item.label);
+        }));
+      };
+
+      const renderConfirmationDialog = () => {
+        if (!showConfirmDialog) return null;
+
+        const { type, title, message, confirmText, cancelText, onConfirm, onCancel } = showConfirmDialog;
+
+        return React.createElement('div', {
+          className: 'confirmation-dialog-overlay',
+          onClick: (e) => {
+            if (e.target === e.currentTarget) {
+              onCancel();
+            }
+          }
+        }, 
+          React.createElement('div', {
+            className: 'confirmation-dialog'
+          }, [
+            React.createElement('div', {
+              className: 'confirmation-dialog-header',
+              key: 'header'
+            }, [
+              React.createElement('div', {
+                className: `confirmation-dialog-icon ${type}`,
+                key: 'icon'
+              }, type === 'danger' ? '⚠' : '!'),
+              React.createElement('h3', {
+                className: 'confirmation-dialog-title',
+                key: 'title'
+              }, title)
+            ]),
+            React.createElement('div', {
+              className: 'confirmation-dialog-message',
+              key: 'message'
+            }, message),
+            React.createElement('div', {
+              className: 'confirmation-dialog-actions',
+              key: 'actions'
+            }, [
+              React.createElement('button', {
+                className: 'confirmation-dialog-button cancel',
+                onClick: onCancel,
+                key: 'cancel'
+              }, cancelText || 'Cancel'),
+              React.createElement('button', {
+                className: `confirmation-dialog-button ${type === 'danger' ? 'danger' : 'confirm'}`,
+                onClick: onConfirm,
+                key: 'confirm'
+              }, confirmText || 'Confirm')
+            ])
+          ])
+        );
+      };
+
+      // Handle context menu hiding on clicks
+      useEffect(() => {
+        const handleClick = () => {
+          if (contextMenu) {
+            hideContextMenu();
+          }
+        };
+
+        document.addEventListener('click', handleClick);
+        return () => document.removeEventListener('click', handleClick);
+      }, [contextMenu]);
 
       // Drag and drop handlers for area tabs
       const handleDragStart = (e, area, index) => {
@@ -3092,44 +4170,255 @@
               `Area: ${selectedArea?.name || 'Unknown'} • ${tasks.length} task${tasks.length !== 1 ? 's' : ''}`
             )
           ]),
-          React.createElement('div', { key: 'actions', className: 'panel-actions' }, [
+          React.createElement('div', { key: 'tasks-header', className: 'tasks-header' }, [
+            React.createElement('h3', { key: 'title' }, 'Tasks'),
             React.createElement('button', { 
               key: 'new-task',
-              className: 'btn btn-primary',
-              onClick: () => setShowNewTaskForm(true)
-            }, '+ New Task')
+              className: 'btn btn-sm btn-outline',
+              onClick: createNewTask
+            }, '+ Task')
           ]),
           React.createElement('div', { key: 'task-list', className: 'task-list' }, 
-            tasks.length === 0 ? [
-              React.createElement('div', { key: 'no-tasks', className: 'no-tasks' }, [
-                React.createElement('p', { key: 'text' }, 'No tasks in this project yet.'),
-                React.createElement('button', { 
-                  key: 'create-first',
-                  className: 'btn btn-outline',
-                  onClick: () => setShowNewTaskForm(true)
-                }, 'Create First Task')
-              ])
-            ] : tasks.map(task => 
-              React.createElement('div', { 
-                key: task.id, 
-                className: `task-item ${selectedTask?.id === task.id ? 'selected' : ''}`,
-                onClick: () => setSelectedTask(task)
-              }, [
-                React.createElement('div', { key: 'status', className: `task-status status-${task.status}` }, task.status),
-                React.createElement('div', { key: 'content', className: 'task-content' }, [
-                  React.createElement('h4', { key: 'title', className: 'task-title' }, task.title),
-                  React.createElement('p', { key: 'desc', className: 'task-description' }, task.description || 'No description'),
-                  React.createElement('div', { key: 'meta', className: 'task-meta' }, [
-                    task.sponsor_email ? React.createElement('span', { key: 'sponsor', className: 'task-sponsor' }, 
+            (() => {
+              const activeTasks = tasks.filter(t => t.status !== 'archived');
+              const archivedTasks = tasks.filter(t => t.status === 'archived');
+              
+              const renderTask = (task, isArchived = false) => {
+                const isEditing = editingItems.tasks.has(task.id);
+                const isSaving = savingItems.tasks.has(task.id);
+                const isNew = task.is_new;
+                
+                if (isEditing) {
+                  return React.createElement('div', { 
+                    key: task.id, 
+                    className: `task-item item-editing ${selectedTask?.id === task.id ? 'selected' : ''} ${isSaving ? 'saving' : ''}`,
+                  }, [
+                    React.createElement('div', { key: 'editing-content', className: 'task-editing-content' }, [
+                      React.createElement('input', {
+                        key: 'title',
+                        className: `editing-field ${isNew ? 'template' : ''}`,
+                        'data-field': `task-title-${task.id}`,
+                        value: task.title,
+                        tabIndex: 0,
+                        onFocus: (e) => {
+                          if (isNew && e.target.value === "New Task") {
+                            e.target.select();
+                          }
+                        },
+                        onChange: (e) => {
+                          setTasks(prev => prev.map(t => 
+                            t.id === task.id ? { ...t, title: e.target.value } : t
+                          ));
+                        },
+                        onKeyDown: (e) => {
+                          if (e.key === 'Enter') {
+                            saveItem('task', tasks.find(t => t.id === task.id));
+                          } else if (e.key === 'Escape') {
+                            cancelEdit('task', task.id);
+                          } else if (e.key === 'Tab') {
+                            e.preventDefault();
+                            const objectiveField = document.querySelector(`textarea[data-field="task-objective-${task.id}"]`);
+                            if (objectiveField) objectiveField.focus();
+                          }
+                        }
+                      }),
+                      React.createElement('textarea', {
+                        key: 'objective',
+                        className: `editing-field ${isNew ? 'template' : ''}`,
+                        'data-field': `task-objective-${task.id}`,
+                        value: task.objective,
+                        placeholder: 'Task objective',
+                        tabIndex: 0,
+                        onFocus: (e) => {
+                          if (isNew && e.target.value === "Task objective - what needs to be accomplished") {
+                            e.target.select();
+                          }
+                        },
+                        onChange: (e) => {
+                          setTasks(prev => prev.map(t => 
+                            t.id === task.id ? { ...t, objective: e.target.value } : t
+                          ));
+                        },
+                        onKeyDown: (e) => {
+                          if (e.key === 'Tab') {
+                            e.preventDefault();
+                            const sponsorField = document.querySelector(`input[data-field="task-sponsor-${task.id}"]`);
+                            if (sponsorField) sponsorField.focus();
+                          }
+                        }
+                      }),
+                      React.createElement('input', {
+                        key: 'sponsor',
+                        type: 'email',
+                        className: `editing-field ${isNew ? 'template' : ''}`,
+                        'data-field': `task-sponsor-${task.id}`,
+                        value: task.sponsor_email,
+                        placeholder: 'Sponsor email',
+                        tabIndex: 0,
+                        onFocus: (e) => {
+                          if (isNew && e.target.value === "sponsor@example.com") {
+                            e.target.select();
+                          }
+                        },
+                        onChange: (e) => {
+                          setTasks(prev => prev.map(t => 
+                            t.id === task.id ? { ...t, sponsor_email: e.target.value } : t
+                          ));
+                        },
+                        onKeyDown: (e) => {
+                          if (e.key === 'Tab') {
+                            e.preventDefault();
+                            const ownerField = document.querySelector(`input[data-field="task-owner-${task.id}"]`);
+                            if (ownerField) ownerField.focus();
+                          }
+                        }
+                      }),
+                      React.createElement('input', {
+                        key: 'owner',
+                        type: 'email',
+                        className: `editing-field ${isNew ? 'template' : ''}`,
+                        'data-field': `task-owner-${task.id}`,
+                        value: task.owner_email,
+                        placeholder: 'Owner email',
+                        tabIndex: 0,
+                        onFocus: (e) => {
+                          if (isNew && e.target.value === "owner@example.com") {
+                            e.target.select();
+                          }
+                        },
+                        onChange: (e) => {
+                          setTasks(prev => prev.map(t => 
+                            t.id === task.id ? { ...t, owner_email: e.target.value } : t
+                          ));
+                        },
+                        onKeyDown: (e) => {
+                          if (e.key === 'Tab') {
+                            e.preventDefault();
+                            const priorityField = document.querySelector(`select[data-field="task-priority-${task.id}"]`);
+                            if (priorityField) priorityField.focus();
+                          }
+                        }
+                      }),
+                      React.createElement('select', {
+                        key: 'priority',
+                        className: 'editing-field',
+                        'data-field': `task-priority-${task.id}`,
+                        value: task.priority || 3,
+                        tabIndex: 0,
+                        onChange: (e) => {
+                          setTasks(prev => prev.map(t => 
+                            t.id === task.id ? { ...t, priority: parseInt(e.target.value) } : t
+                          ));
+                        },
+                        onKeyDown: (e) => {
+                          if (e.key === 'Tab') {
+                            e.preventDefault();
+                            const saveBtn = document.querySelector(`button[data-save="task-${task.id}"]`);
+                            if (saveBtn) saveBtn.focus();
+                          }
+                        }
+                      }, [
+                        React.createElement('option', { key: 1, value: 1 }, 'Priority 1 (High)'),
+                        React.createElement('option', { key: 2, value: 2 }, 'Priority 2'),
+                        React.createElement('option', { key: 3, value: 3 }, 'Priority 3 (Medium)'),
+                        React.createElement('option', { key: 4, value: 4 }, 'Priority 4'),
+                        React.createElement('option', { key: 5, value: 5 }, 'Priority 5 (Low)')
+                      ]),
+                      React.createElement('div', { key: 'actions', className: 'editing-actions' }, [
+                        React.createElement('button', {
+                          key: 'save',
+                          className: 'btn btn-primary',
+                          'data-save': `task-${task.id}`,
+                          tabIndex: 0,
+                          onClick: () => saveItem('task', tasks.find(t => t.id === task.id)),
+                          onKeyDown: (e) => {
+                            if (e.key === 'Tab') {
+                              e.preventDefault();
+                              const cancelBtn = document.querySelector(`button[data-cancel="task-${task.id}"]`);
+                              if (cancelBtn) cancelBtn.focus();
+                            }
+                          }
+                        }, '✓ Save'),
+                        React.createElement('button', {
+                          key: 'cancel',
+                          className: 'btn btn-outline',
+                          'data-cancel': `task-${task.id}`,
+                          tabIndex: 0,
+                          onClick: () => cancelEdit('task', task.id)
+                        }, '✗ Cancel')
+                      ])
+                    ])
+                  ]);
+                }
+                
+                return React.createElement('div', { 
+                  key: task.id, 
+                  className: `task-item ${selectedTask?.id === task.id ? 'selected' : ''} ${isArchived ? 'archive-section-item' : ''}`,
+                  onClick: () => setSelectedTask(task),
+                  onContextMenu: (e) => showContextMenu(e, 'task', task)
+                }, [
+                  React.createElement('div', { key: 'content', className: 'task-content' }, [
+                    React.createElement('h4', { key: 'title', className: 'task-title' }, task.title),
+                    React.createElement('p', { key: 'objective', className: 'task-objective' }, task.objective || 'No objective defined'),
+                    React.createElement('div', { 
+                      key: 'priority', 
+                      className: 'task-priority',
+                      'data-priority': task.priority || 3
+                    }, `Priority: P${task.priority || 3}`),
+                    task.sponsor_email ? React.createElement('div', { key: 'sponsor', className: 'task-sponsor' }, 
                       `Sponsor: ${task.sponsor_email}`) : null,
-                    task.owner_email ? React.createElement('span', { key: 'owner', className: 'task-owner' }, 
+                    task.owner_email ? React.createElement('div', { key: 'owner', className: 'task-owner' }, 
                       `Owner: ${task.owner_email}`) : null,
-                    task.due_date ? React.createElement('span', { key: 'due', className: 'task-due' }, 
+                    task.due_date ? React.createElement('div', { key: 'due', className: 'task-due' }, 
                       `Due: ${new Date(task.due_date).toLocaleDateString()}`) : null
-                  ].filter(Boolean))
-                ])
-              ])
-            )
+                  ].filter(Boolean)),
+                  React.createElement('div', { key: 'status', className: `task-status status-${task.status}` }, getStatusDisplayText(task.status))
+                ]);
+              };
+
+              const elements = [];
+
+              // Active tasks section  
+              if (activeTasks.length === 0 && archivedTasks.length === 0) {
+                elements.push(React.createElement('div', { key: 'no-tasks', className: 'no-tasks' }, [
+                  React.createElement('p', { key: 'text' }, 'No tasks in this project yet.'),
+                  React.createElement('button', { 
+                    key: 'create-first',
+                    className: 'btn btn-outline',
+                    onClick: createNewTask
+                  }, 'Create First Task')
+                ]));
+              } else {
+                // Show active tasks
+                elements.push(...activeTasks.map(task => renderTask(task, false)));
+
+                // Show archived tasks section if there are any
+                if (archivedTasks.length > 0) {
+                  elements.push(
+                    React.createElement('div', { key: 'archive-section-tasks', className: 'archive-section' }, [
+                      React.createElement('div', {
+                        key: 'archive-header',
+                        className: 'archive-section-header',
+                        onClick: () => toggleArchiveSection('tasks')
+                      }, [
+                        React.createElement('span', { 
+                          key: 'chevron', 
+                          className: `archive-section-chevron ${expandedArchiveSections.tasks ? 'expanded' : ''}` 
+                        }, '▶'),
+                        React.createElement('span', { key: 'title' }, 'Archived Tasks'),
+                        React.createElement('span', { key: 'count', className: 'archive-section-count' }, archivedTasks.length)
+                      ]),
+                      React.createElement('div', {
+                        key: 'archive-content',
+                        className: `archive-section-content ${!expandedArchiveSections.tasks ? 'collapsed' : ''}`
+                      }, expandedArchiveSections.tasks ? archivedTasks.map(task => renderTask(task, true)) : [])
+                    ])
+                  );
+                }
+              }
+
+              return elements;
+            })()
           )
         ]);
       };
@@ -3154,7 +4443,7 @@
               React.createElement('button', { 
                 key: 'new-area',
                 className: 'btn btn-sm btn-outline',
-                onClick: () => setShowNewAreaForm(true)
+                onClick: createNewArea
               }, '+ Area')
             ]),
             
@@ -3163,8 +4452,127 @@
               // Visible tabs
               React.createElement('div', { key: 'tabs', className: 'area-tabs-list' }, [
                 // Render visible area tabs
-                ...visibleAreas.map((area, index) => 
-                  React.createElement('div', { 
+                ...visibleAreas.map((area, index) => {
+                  const isEditing = editingItems.areas.has(area.id);
+                  const isNew = area.is_new;
+                  
+                  if (isEditing) {
+                    return React.createElement('div', { 
+                      key: area.id,
+                      className: `area-tab editing ${selectedArea?.id === area.id ? 'active' : ''}`,
+                    }, [
+                      React.createElement('input', {
+                        key: 'name-input',
+                        className: `editing-field ${isNew ? 'template' : ''}`,
+                        'data-field': `area-name-${area.id}`,
+                        value: area.name,
+                        tabIndex: 0,
+                        onFocus: (e) => {
+                          if (isNew && e.target.value === "New Area") {
+                            e.target.select();
+                          }
+                        },
+                        onChange: (e) => {
+                          // Update area in state
+                          setAreas(prev => prev.map(a => 
+                            a.id === area.id ? { ...a, name: e.target.value } : a
+                          ));
+                        },
+                        onKeyDown: (e) => {
+                          if (e.key === 'Enter') {
+                            saveItem('area', areas.find(a => a.id === area.id));
+                          } else if (e.key === 'Escape') {
+                            cancelEdit('area', area.id);
+                          } else if (e.key === 'Tab') {
+                            e.preventDefault();
+                            const descField = document.querySelector(`textarea[data-field="area-description-${area.id}"]`);
+                            if (descField) descField.focus();
+                          }
+                        }
+                      }),
+                      React.createElement('div', { key: 'editing-form', className: 'area-editing-form' }, [
+                        React.createElement('textarea', {
+                          key: 'description',
+                          className: `editing-field ${isNew ? 'template' : ''}`,
+                          'data-field': `area-description-${area.id}`,
+                          value: area.description,
+                          tabIndex: 0,
+                          placeholder: 'Area description',
+                          onFocus: (e) => {
+                            if (isNew && e.target.value === "Area description") {
+                              e.target.select();
+                            }
+                          },
+                          onChange: (e) => {
+                            setAreas(prev => prev.map(a => 
+                              a.id === area.id ? { ...a, description: e.target.value } : a
+                            ));
+                          },
+                          onKeyDown: (e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              saveItem('area', areas.find(a => a.id === area.id));
+                            } else if (e.key === 'Escape') {
+                              cancelEdit('area', area.id);
+                            } else if (e.key === 'Tab') {
+                              e.preventDefault();
+                              const colorField = document.querySelector(`input[data-field="area-color-${area.id}"]`);
+                              if (colorField) colorField.focus();
+                            }
+                          }
+                        }),
+                        React.createElement('input', {
+                          key: 'color',
+                          type: 'color',
+                          className: 'editing-field',
+                          'data-field': `area-color-${area.id}`,
+                          value: area.color,
+                          tabIndex: 0,
+                          onChange: (e) => {
+                            setAreas(prev => prev.map(a => 
+                              a.id === area.id ? { ...a, color: e.target.value } : a
+                            ));
+                          },
+                          onKeyDown: (e) => {
+                            if (e.key === 'Enter') {
+                              saveItem('area', areas.find(a => a.id === area.id));
+                            } else if (e.key === 'Escape') {
+                              cancelEdit('area', area.id);
+                            } else if (e.key === 'Tab') {
+                              e.preventDefault();
+                              const saveBtn = document.querySelector(`button[data-save="area-${area.id}"]`);
+                              if (saveBtn) saveBtn.focus();
+                            }
+                          }
+                        }),
+                        React.createElement('div', { key: 'actions', className: 'editing-actions' }, [
+                          React.createElement('button', {
+                            key: 'save',
+                            className: 'btn btn-primary',
+                            'data-save': `area-${area.id}`,
+                            tabIndex: 0,
+                            onClick: () => saveItem('area', areas.find(a => a.id === area.id)),
+                            onKeyDown: (e) => {
+                              if (e.key === 'Tab') {
+                                e.preventDefault();
+                                const cancelBtn = document.querySelector(`button[data-cancel="area-${area.id}"]`);
+                                if (cancelBtn) cancelBtn.focus();
+                              }
+                            }
+                          }, '✓ Save'),
+                          React.createElement('button', {
+                            key: 'cancel',
+                            className: 'btn btn-outline',
+                            'data-cancel': `area-${area.id}`,
+                            tabIndex: 0,
+                            onClick: () => cancelEdit('area', area.id)
+                          }, '✗ Cancel')
+                        ])
+                      ])
+                    ]);
+                  }
+                  
+                  return React.createElement('div', { 
                     key: area.id,
                     className: `area-tab ${selectedArea?.id === area.id ? 'active' : ''}`,
                     draggable: true,
@@ -3176,18 +4584,11 @@
                     onDragLeave: handleDragLeave,
                     onDrop: (e) => handleDrop(e, index)
                   }, [
-                    React.createElement('div', { key: 'content', className: 'area-tab-content' }, [
-                      React.createElement('div', { key: 'name', className: 'area-tab-name' }, area.name),
-                      React.createElement('div', { key: 'count', className: 'area-tab-count' }, 
-                        `${area.project_count || 0} project${(area.project_count || 0) !== 1 ? 's' : ''}`)
-                    ]),
-                    React.createElement('div', { 
-                      key: 'drag-handle', 
-                      className: 'area-tab-drag-handle',
-                      title: 'Drag to reorder'
-                    }, '⋮⋮')
-                  ])
-                ),
+                    React.createElement('span', { key: 'name', className: 'area-tab-name' }, area.name),
+                    React.createElement('span', { key: 'count', className: 'area-tab-count' }, 
+                      formatCount(area.project_count || 0))
+                  ]);
+                }),
                 
                 // Overflow menu if needed
                 hasOverflow ? React.createElement('div', { key: 'overflow', className: 'area-overflow-menu' }, [
@@ -3207,11 +4608,9 @@
                           setShowOverflowMenu(false);
                         }
                       }, [
-                        React.createElement('div', { key: 'content', className: 'area-tab-content' }, [
-                          React.createElement('div', { key: 'name', className: 'area-tab-name' }, area.name),
-                          React.createElement('div', { key: 'count', className: 'area-tab-count' }, 
-                            `${area.project_count || 0} project${(area.project_count || 0) !== 1 ? 's' : ''}`)
-                        ])
+                        React.createElement('span', { key: 'name', className: 'area-tab-name' }, area.name),
+                        React.createElement('span', { key: 'count', className: 'area-tab-count' }, 
+                          formatCount(area.project_count || 0))
                       ])
                     )
                   ) : null
@@ -3226,35 +4625,203 @@
                   React.createElement('button', { 
                     key: 'new-project',
                     className: 'btn btn-sm btn-outline',
-                    onClick: () => setShowNewProjectForm(true)
+                    onClick: createNewProject
                   }, '+ Project')
                 ]),
                 React.createElement('div', { key: 'projects-list', className: 'projects-list', style: { marginTop: '12px' } }, 
-                  projects.length === 0 ? [
-                    React.createElement('div', { key: 'no-projects', className: 'no-projects', style: { padding: '16px', textAlign: 'center', color: 'var(--text-muted)' } }, 
-                      'No projects in this area yet.')
-                  ] : projects.map(project => 
-                    React.createElement('div', { 
-                      key: project.id, 
-                      className: `project-item ${selectedProject?.id === project.id ? 'selected' : ''}`,
-                      onClick: () => {
-                        const handleProjectClick = async () => {
-                          try {
-                            setSelectedProject(project);
-                            await loadTasksForProject(project.id);
-                          } catch (error) {
-                            console.error('Error loading project tasks:', error);
-                          }
-                        };
-                        handleProjectClick();
+                  (() => {
+                    const activeProjects = getSortedProjects(projects).filter(p => p.status !== 'archived');
+                    const archivedProjects = getSortedProjects(projects).filter(p => p.status === 'archived');
+                    
+                    const renderProject = (project, isArchived = false) => {
+                      const isEditing = editingItems.projects.has(project.id);
+                      const isNew = project.is_new;
+                      
+                      if (isEditing) {
+                        return React.createElement('div', { 
+                          key: project.id, 
+                          className: `project-item item-editing ${selectedProject?.id === project.id ? 'selected' : ''}`,
+                        }, [
+                          React.createElement('div', { key: 'editing-content', className: 'project-editing-content' }, [
+                            React.createElement('input', {
+                              key: 'name',
+                              className: `editing-field ${isNew ? 'template' : ''}`,
+                              'data-field': `project-name-${project.id}`,
+                              value: project.name,
+                              tabIndex: 0,
+                              onFocus: (e) => {
+                                if (isNew && e.target.value === "New Project") {
+                                  e.target.select();
+                                }
+                              },
+                              onChange: (e) => {
+                                setProjects(prev => prev.map(p => 
+                                  p.id === project.id ? { ...p, name: e.target.value } : p
+                                ));
+                              },
+                              onKeyDown: (e) => {
+                                if (e.key === 'Enter') {
+                                  saveItem('project', projects.find(p => p.id === project.id));
+                                } else if (e.key === 'Escape') {
+                                  cancelEdit('project', project.id);
+                                } else if (e.key === 'Tab') {
+                                  e.preventDefault();
+                                  const descField = document.querySelector(`textarea[data-field="project-description-${project.id}"]`);
+                                  if (descField) descField.focus();
+                                }
+                              }
+                            }),
+                            React.createElement('textarea', {
+                              key: 'description',
+                              className: `editing-field ${isNew ? 'template' : ''}`,
+                              'data-field': `project-description-${project.id}`,
+                              value: project.description,
+                              placeholder: 'Project description',
+                              tabIndex: 0,
+                              onFocus: (e) => {
+                                if (isNew && e.target.value === "Project description") {
+                                  e.target.select();
+                                }
+                              },
+                              onChange: (e) => {
+                                setProjects(prev => prev.map(p => 
+                                  p.id === project.id ? { ...p, description: e.target.value } : p
+                                ));
+                              },
+                              onKeyDown: (e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                  e.preventDefault();
+                                  saveItem('project', projects.find(p => p.id === project.id));
+                                } else if (e.key === 'Escape') {
+                                  cancelEdit('project', project.id);
+                                } else if (e.key === 'Tab') {
+                                  e.preventDefault();
+                                  const priorityField = document.querySelector(`select[data-field="project-priority-${project.id}"]`);
+                                  if (priorityField) priorityField.focus();
+                                }
+                              }
+                            }),
+                            React.createElement('select', {
+                              key: 'priority',
+                              className: 'editing-field',
+                              'data-field': `project-priority-${project.id}`,
+                              value: project.priority || 3,
+                              tabIndex: 0,
+                              onChange: (e) => {
+                                setProjects(prev => prev.map(p => 
+                                  p.id === project.id ? { ...p, priority: parseInt(e.target.value) } : p
+                                ));
+                              },
+                              onKeyDown: (e) => {
+                                if (e.key === 'Enter') {
+                                  saveItem('project', projects.find(p => p.id === project.id));
+                                } else if (e.key === 'Escape') {
+                                  cancelEdit('project', project.id);
+                                } else if (e.key === 'Tab') {
+                                  e.preventDefault();
+                                  const saveBtn = document.querySelector(`button[data-save="project-${project.id}"]`);
+                                  if (saveBtn) saveBtn.focus();
+                                }
+                              }
+                            }, [
+                              React.createElement('option', { key: 1, value: 1 }, 'Priority 1 (Ultra)'),
+                              React.createElement('option', { key: 2, value: 2 }, 'Priority 2 (High)'),
+                              React.createElement('option', { key: 3, value: 3 }, 'Priority 3 (Medium)'),
+                              React.createElement('option', { key: 4, value: 4 }, 'Priority 4 (Low)'),
+                              React.createElement('option', { key: 5, value: 5 }, 'Priority 5 (Base)')
+                            ]),
+                            React.createElement('div', { key: 'actions', className: 'editing-actions' }, [
+                              React.createElement('button', {
+                                key: 'save',
+                                className: 'btn btn-primary',
+                                'data-save': `project-${project.id}`,
+                                tabIndex: 0,
+                                onClick: () => saveItem('project', projects.find(p => p.id === project.id)),
+                                onKeyDown: (e) => {
+                                  if (e.key === 'Tab') {
+                                    e.preventDefault();
+                                    const cancelBtn = document.querySelector(`button[data-cancel="project-${project.id}"]`);
+                                    if (cancelBtn) cancelBtn.focus();
+                                  }
+                                }
+                              }, '✓ Save'),
+                              React.createElement('button', {
+                                key: 'cancel',
+                                className: 'btn btn-outline',
+                                'data-cancel': `project-${project.id}`,
+                                tabIndex: 0,
+                                onClick: () => cancelEdit('project', project.id)
+                              }, '✗ Cancel')
+                            ])
+                          ])
+                        ]);
                       }
-                    }, [
-                      React.createElement('span', { key: 'name', className: 'project-name' }, project.name),
-                      React.createElement('span', { key: 'status', className: `project-status status-${project.status}` }, project.status),
-                      React.createElement('span', { key: 'count', className: 'project-task-count' }, 
-                        `${project.task_count || 0} task${(project.task_count || 0) !== 1 ? 's' : ''}`)
-                    ])
-                  )
+                      
+                      return React.createElement('div', { 
+                        key: project.id, 
+                        className: `project-item ${selectedProject?.id === project.id ? 'selected' : ''} ${isArchived ? 'archive-section-item' : ''}`,
+                        onClick: () => {
+                          const handleProjectClick = async () => {
+                            try {
+                              setSelectedProject(project);
+                              await loadTasksForProject(project.id);
+                            } catch (error) {
+                              console.error('Error loading project tasks:', error);
+                            }
+                          };
+                          handleProjectClick();
+                        },
+                        onContextMenu: (e) => showContextMenu(e, 'project', project)
+                      }, [
+                        React.createElement('span', { key: 'name', className: 'project-name' }, getProjectDisplayName(project, selectedArea)),
+                        React.createElement('span', { 
+                          key: 'priority', 
+                          className: 'project-priority priority-badge',
+                          style: getAssessmentStyle('priority', getPriorityText(project.priority))
+                        }, getPriorityText(project.priority)),
+                        React.createElement('span', { key: 'status', className: `project-status status-${project.status}` }, getStatusDisplayText(project.status)),
+                        React.createElement('span', { key: 'count', className: 'project-task-count' }, 
+                          formatCount(project.task_count || 0))
+                      ]);
+                    };
+
+                    const elements = [];
+
+                    // Active projects section
+                    if (activeProjects.length === 0 && archivedProjects.length === 0) {
+                      elements.push(React.createElement('div', { key: 'no-projects', className: 'no-projects', style: { padding: '16px', textAlign: 'center', color: 'var(--text-muted)' } }, 
+                        'No projects in this area yet.'));
+                    } else {
+                      // Show active projects
+                      elements.push(...activeProjects.map(project => renderProject(project, false)));
+
+                      // Show archived projects section if there are any
+                      if (archivedProjects.length > 0) {
+                        elements.push(
+                          React.createElement('div', { key: 'archive-section', className: 'archive-section' }, [
+                            React.createElement('div', {
+                              key: 'archive-header',
+                              className: 'archive-section-header',
+                              onClick: () => toggleArchiveSection('projects')
+                            }, [
+                              React.createElement('span', { 
+                                key: 'chevron', 
+                                className: `archive-section-chevron ${expandedArchiveSections.projects ? 'expanded' : ''}` 
+                              }, '▶'),
+                              React.createElement('span', { key: 'title' }, 'Archived Projects'),
+                              React.createElement('span', { key: 'count', className: 'archive-section-count' }, archivedProjects.length)
+                            ]),
+                            React.createElement('div', {
+                              key: 'archive-content',
+                              className: `archive-section-content ${!expandedArchiveSections.projects ? 'collapsed' : ''}`
+                            }, expandedArchiveSections.projects ? archivedProjects.map(project => renderProject(project, true)) : [])
+                          ])
+                        );
+                      }
+                    }
+
+                    return elements;
+                  })()
                 )
               ]) : null
             ])
@@ -3329,45 +4896,10 @@
         React.cloneElement(renderStatusBar(), { key: 'status-bar' }),
         
         // Context Menu
-        contextMenu.visible && React.createElement('div', {
-          key: 'context-menu',
-          className: 'context-menu',
-          style: {
-            left: contextMenu.x + 'px',
-            top: contextMenu.y + 'px'
-          },
-          onClick: (e) => e.stopPropagation()
-        }, [
-          React.createElement('button', {
-            key: 'reprocess',
-            className: 'context-menu-item',
-            disabled: contextMenu.email?.isProcessing,
-            onClick: () => handleContextMenuAction('reprocess', contextMenu.email)
-          }, [
-            React.createElement('svg', {
-              key: 'icon',
-              className: 'context-menu-icon',
-              viewBox: '0 0 24 24',
-              fill: 'none',
-              stroke: 'currentColor',
-              strokeWidth: 2
-            }, [
-              React.createElement('path', {
-                key: 'path',
-                d: 'M21 12c0 1.66-4.03 3-9 3s-9-1.34-9-3'
-              }),
-              React.createElement('path', {
-                key: 'path2', 
-                d: 'M3 5c0-1.66 4.03-3 9-3s9 1.34 9 3v7c0 1.66-4.03 3-9 3s-9-1.34-9-3V5z'
-              }),
-              React.createElement('polyline', {
-                key: 'polyline',
-                points: '9 11 12 14 22 4'
-              })
-            ]),
-            React.createElement('span', { key: 'text' }, 'Re-process with AI')
-          ])
-        ])
+        contextMenu ? React.cloneElement(renderContextMenu(), { key: 'context-menu' }) : null,
+        
+        // Confirmation Dialog
+        showConfirmDialog ? React.cloneElement(renderConfirmationDialog(), { key: 'confirm-dialog' }) : null
       ]);
     }
 

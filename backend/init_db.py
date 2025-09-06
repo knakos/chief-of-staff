@@ -127,67 +127,83 @@ def init_database(add_sample_data: bool = True):
             tasks = [
                 Task(
                     title="Review client feedback on proposal",
-                    description="Analyze feedback from ABC Corp on our Q1 proposal",
+                    objective="Ensure ABC Corp proposal aligns with client expectations and address concerns",
                     status="pending",
                     priority=1,
                     project_id=project1.id,
+                    sponsor_email="manager@company.com",
+                    owner_email="john.smith@company.com",
                     due_date=datetime.utcnow() + timedelta(days=2)
                 ),
                 Task(
                     title="Schedule stakeholder meeting",
-                    description="Coordinate calendars for project kickoff meeting",
+                    objective="Get all key stakeholders aligned on project timeline and deliverables",
                     status="in_progress",
                     priority=2,
                     project_id=project1.id,
+                    sponsor_email="director@company.com",
+                    owner_email="sarah.johnson@company.com",
                     due_date=datetime.utcnow() + timedelta(days=5)
                 ),
                 Task(
                     title="Design mockups for homepage",
-                    description="Create initial design concepts for new homepage",
+                    objective="Create visually appealing homepage that improves user engagement by 25%",
                     status="pending",
                     priority=2,
                     project_id=project2.id,
+                    sponsor_email="marketing@company.com",
+                    owner_email="alex.designer@company.com",
                     due_date=datetime.utcnow() + timedelta(days=7)
                 ),
                 Task(
                     title="Research training vendors",
-                    description="Identify potential vendors for team training program",
+                    objective="Identify 3 qualified vendors to improve team skills and productivity",
                     status="completed",
                     priority=3,
                     project_id=project3.id,
+                    sponsor_email="hr@company.com",
+                    owner_email="lisa.trainer@company.com",
                     completed_at=datetime.utcnow() - timedelta(days=3)
                 ),
                 # Tasks in catch-all buckets
                 Task(
                     title="Review quarterly expense report",
-                    description="Go through Q1 expenses and categorize them properly",
+                    objective="Ensure Q1 expenses are properly categorized and within budget",
                     status="pending",
                     priority=2,
                     project_id=work_tasks.id,
+                    sponsor_email="finance@company.com",
+                    owner_email="self@company.com",
                     due_date=datetime.utcnow() + timedelta(days=3)
                 ),
                 Task(
                     title="Schedule dentist appointment", 
-                    description="Book routine dental cleaning",
+                    objective="Maintain good oral health with routine 6-month cleaning",
                     status="pending",
                     priority=3,
-                    project_id=personal_tasks.id
+                    project_id=personal_tasks.id,
+                    sponsor_email="self@personal.com",
+                    owner_email="self@personal.com"
                 ),
                 # Personal project task
                 Task(
                     title="Get contractor quotes for kitchen",
-                    description="Contact 3 contractors for kitchen renovation quotes",
+                    objective="Compare 3 contractor options to get best value for kitchen renovation",
                     status="in_progress",
                     priority=1,
                     project_id=personal_project1.id,
+                    sponsor_email="spouse@home.com",
+                    owner_email="self@personal.com",
                     due_date=datetime.utcnow() + timedelta(days=1)
                 ),
                 Task(
                     title="Pick tile for bathroom",
-                    description="Choose tiles for bathroom renovation at Home Depot",
+                    objective="Select durable and stylish tiles that match overall design vision",
                     status="pending", 
                     priority=2,
                     project_id=personal_project1.id,
+                    sponsor_email="self@personal.com",
+                    owner_email="self@personal.com",
                     due_date=datetime.utcnow() + timedelta(days=10)
                 )
             ]

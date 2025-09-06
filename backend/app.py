@@ -1042,6 +1042,40 @@ async def create_area(area_data: dict, db: Session = Depends(get_db)):
         db.rollback()
         return {"success": False, "error": str(e)}
 
+@app.put("/api/areas/{area_id}")
+async def update_area(area_id: str, area_data: dict, db: Session = Depends(get_db)):
+    """Update existing area"""
+    try:
+        area = db.query(Area).filter_by(id=area_id).first()
+        if not area:
+            return {"success": False, "error": "Area not found"}
+
+        # Update area fields
+        if "name" in area_data:
+            area.name = area_data["name"]
+        if "description" in area_data:
+            area.description = area_data["description"]
+        if "color" in area_data:
+            area.color = area_data["color"]
+        if "sort_order" in area_data:
+            area.sort_order = area_data["sort_order"]
+
+        db.commit()
+        return {
+            "success": True, 
+            "area": {
+                "id": area.id,
+                "name": area.name,
+                "description": area.description,
+                "color": area.color,
+                "sort_order": area.sort_order
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error updating area: {e}")
+        db.rollback()
+        return {"success": False, "error": str(e)}
+
 @app.get("/api/areas/{area_id}/projects")
 async def get_area_projects(area_id: str, db: Session = Depends(get_db)):
     """Get all projects in an area with task counts"""
@@ -1103,7 +1137,6 @@ async def get_project_detail(project_id: str, db: Session = Depends(get_db)):
         tasks.append({
             "id": task.id,
             "title": task.title,
-            "description": task.description,
             "objective": task.objective,
             "status": task.status,
             "priority": task.priority,
@@ -1139,7 +1172,6 @@ async def create_task(task_data: dict, db: Session = Depends(get_db)):
     try:
         new_task = Task(
             title=task_data["title"],
-            description=task_data.get("description", ""),
             objective=task_data.get("objective", ""),
             project_id=task_data["project_id"],
             status=task_data.get("status", "pending"),
@@ -1185,6 +1217,36 @@ async def update_task(task_id: str, task_data: dict, db: Session = Depends(get_d
         db.rollback()
         return {"success": False, "error": str(e)}
 
+@app.put("/api/tasks/{task_id}/archive")
+async def archive_task(task_id: str, db: Session = Depends(get_db)):
+    """Archive a task"""
+    try:
+        task = db.query(Task).filter_by(id=task_id).first()
+        if not task:
+            return {"success": False, "error": "Task not found"}
+        
+        task.status = "archived"
+        db.commit()
+        return {"success": True}
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "error": str(e)}
+
+@app.put("/api/tasks/{task_id}/restore")
+async def restore_task(task_id: str, db: Session = Depends(get_db)):
+    """Restore an archived task"""
+    try:
+        task = db.query(Task).filter_by(id=task_id).first()
+        if not task:
+            return {"success": False, "error": "Task not found"}
+        
+        task.status = "active"
+        db.commit()
+        return {"success": True}
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "error": str(e)}
+
 @app.delete("/api/tasks/{task_id}")
 async def delete_task(task_id: str, db: Session = Depends(get_db)):
     """Delete task (no archiving required)"""
@@ -1203,16 +1265,56 @@ async def delete_task(task_id: str, db: Session = Depends(get_db)):
 @app.put("/api/projects/{project_id}")
 async def update_project(project_id: str, project_data: dict, db: Session = Depends(get_db)):
     """Update existing project"""
+    logger.info(f"Received project update request for ID: {project_id}")
+    logger.info(f"Project data: {project_data}")
+    try:
+        project = db.query(Project).filter_by(id=project_id).first()
+        if not project:
+            logger.error(f"Project not found: {project_id}")
+            return {"success": False, "error": "Project not found"}
+        
+        # Only update allowed fields (same pattern as tasks)
+        allowed_fields = ["name", "description", "status", "priority", "color"]
+        for field, value in project_data.items():
+            if field in allowed_fields and hasattr(project, field):
+                setattr(project, field, value)
+                logger.info(f"Updated {field}: {value}")
+        
+        db.commit()
+        logger.info(f"Project {project_id} updated successfully")
+        return {"success": True}
+    except Exception as e:
+        logger.error(f"Error updating project: {e}")
+        db.rollback()
+        return {"success": False, "error": str(e)}
+
+@app.put("/api/projects/{project_id}/archive")
+async def archive_project(project_id: str, db: Session = Depends(get_db)):
+    """Archive a project"""
     try:
         project = db.query(Project).filter_by(id=project_id).first()
         if not project:
             return {"success": False, "error": "Project not found"}
         
-        # Update fields
-        for field, value in project_data.items():
-            if hasattr(project, field):
-                setattr(project, field, value)
+        if project.is_system:
+            return {"success": False, "error": "Cannot archive system projects"}
         
+        project.status = "archived"
+        db.commit()
+        return {"success": True}
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "error": str(e)}
+
+@app.put("/api/projects/{project_id}/restore")
+async def restore_project(project_id: str, db: Session = Depends(get_db)):
+    """Restore an archived project"""
+    try:
+        project = db.query(Project).filter_by(id=project_id).first()
+        if not project:
+            return {"success": False, "error": "Project not found"}
+        
+        project.status = "active"
         db.commit()
         return {"success": True}
     except Exception as e:

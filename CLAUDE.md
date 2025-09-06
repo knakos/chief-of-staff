@@ -357,6 +357,48 @@ const [projectsLoading, setProjectsLoading] = useState(false);
 4. **Task Fields**: Every task requires sponsor email, owner email, and objective
 5. **Hierarchy**: Area → Project → Task relationship enforced at database level
 
+### Status Flow Logic & Rationale
+
+#### **Project Statuses:**
+- **`planning`** - Strategic placeholder for projects being scoped/designed (Blue)
+- **`active`** - Resources allocated, work happening (Green)
+- **`paused`** - Temporarily stopped but intended to resume (Yellow/amber)
+- **`blocked`** - Cannot proceed due to external dependencies (Red)
+- **`completed`** - All deliverables complete, objectives met (Green)
+
+**Project Flow**: `planning → active ⟷ paused ⟷ blocked → completed`
+
+**Project Status Rationale**: Projects exist in strategic context where "pausing" and "planning" are legitimate management decisions for resource allocation, timing, and dependencies.
+
+#### **Task Statuses:**
+- **`not_started`** - Task has not been initiated (Gray)
+- **`active`** - Currently being worked on (Green)
+- **`blocked`** - Cannot proceed due to dependencies/issues (Red)
+- **`completed`** - Task finished successfully (Green)
+- **`dropped`** - No longer needed but preserved for strategic context (Purple)
+
+**Task Flow**: `not_started → active ⟷ blocked → completed` (any status can become `dropped`)
+
+**Task Status Rationale**: 
+- **Active tasks can become blocked** when hitting obstacles during work
+- **"Dropped" preserves strategic context** showing evolving priorities without deletion
+- **No "paused" for tasks** - tasks are either being worked on or not
+- **"Not started" vs "pending"** - more explicit and actionable language
+
+#### **Status Transition Examples:**
+
+**Projects:**
+- Planning → Active: "Q2 Product Launch" gets team assignment
+- Active → Paused: "Website Redesign" paused during Q4 freeze  
+- Active → Blocked: "New Feature" blocked waiting for legal approval
+- Blocked → Active: Legal approval received, development resumes
+
+**Tasks:**
+- Not Started → Active: Begin working on "Write requirements doc"
+- Active → Blocked: "Implement API" hits missing dependency
+- Blocked → Active: Dependency resolved, work resumes
+- Active → Dropped: "Research competitor X" becomes irrelevant mid-work
+
 ### Common Debugging Issues
 1. **Infinite Render Loops**: Remove state variables from useEffect dependencies if they're managed by the effect
 2. **CSP Violations**: Ensure `connect-src 'self' http://127.0.0.1:8787` in Content Security Policy

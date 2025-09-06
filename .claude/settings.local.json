@@ -49,7 +49,9 @@
       "Bash(./scripts/start_all.sh:*)",
       "Bash(taskkill:*)",
       "Read(//**)",
-      "Bash(del cos.db)"
+      "Bash(del cos.db)",
+      "Read(///**)",
+      "Bash(cmd.exe:*)"
     ],
     "deny": [],
     "ask": []
