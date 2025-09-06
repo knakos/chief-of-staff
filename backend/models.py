@@ -365,7 +365,7 @@ class DecisionHistory(Base):
     # Context
     related_project_id = Column(String, ForeignKey("projects.id"))
     related_task_id = Column(String, ForeignKey("tasks.id"))
-    related_email_id = Column(String, ForeignKey("emails.id"))
+    related_email_outlook_id = Column(String)  # Reference to Outlook email ID
     stakeholders_involved = Column(SQLiteJSON)  # Who was consulted/impacted
     
     # Metadata

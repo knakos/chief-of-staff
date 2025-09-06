@@ -1044,14 +1044,22 @@ async def create_area(area_data: dict, db: Session = Depends(get_db)):
 
 @app.put("/api/areas/{area_id}")
 async def update_area(area_id: str, area_data: dict, db: Session = Depends(get_db)):
-    """Update existing area"""
+    """Update existing area (only non-system areas can be renamed)"""
     try:
         area = db.query(Area).filter_by(id=area_id).first()
         if not area:
             return {"success": False, "error": "Area not found"}
+        
+        # System areas cannot be renamed
+        if area.is_system and "name" in area_data:
+            return {"success": False, "error": "Cannot rename system areas"}
 
         # Update area fields
-        if "name" in area_data:
+        if "name" in area_data and not area.is_system:
+            # Check for unique name constraint
+            existing = db.query(Area).filter(Area.name == area_data["name"], Area.id != area_id).first()
+            if existing:
+                return {"success": False, "error": f"Area name '{area_data['name']}' already exists"}
             area.name = area_data["name"]
         if "description" in area_data:
             area.description = area_data["description"]
@@ -1068,11 +1076,54 @@ async def update_area(area_id: str, area_data: dict, db: Session = Depends(get_d
                 "name": area.name,
                 "description": area.description,
                 "color": area.color,
-                "sort_order": area.sort_order
+                "sort_order": area.sort_order,
+                "is_system": area.is_system
             }
         }
     except Exception as e:
         logger.error(f"Error updating area: {e}")
+        db.rollback()
+        return {"success": False, "error": str(e)}
+
+@app.delete("/api/areas/{area_id}")
+async def delete_area(area_id: str, db: Session = Depends(get_db)):
+    """Delete area (only non-system areas with no active projects/tasks)"""
+    try:
+        area = db.query(Area).filter_by(id=area_id).first()
+        if not area:
+            return {"success": False, "error": "Area not found"}
+        
+        # System areas cannot be deleted
+        if area.is_system:
+            return {"success": False, "error": "Cannot delete system areas"}
+        
+        # Check for active projects (excluding catch-all Tasks projects)
+        active_projects = db.query(Project).filter(
+            Project.area_id == area_id,
+            Project.is_catch_all == False,
+            Project.status.in_(["active", "planning", "paused", "blocked"])
+        ).count()
+        
+        if active_projects > 0:
+            return {"success": False, "error": f"Cannot delete area with {active_projects} active projects"}
+        
+        # Check for active tasks in any projects in this area
+        active_tasks = db.query(Task).join(Project).filter(
+            Project.area_id == area_id,
+            Task.status.in_(["not_started", "active", "blocked"])
+        ).count()
+        
+        if active_tasks > 0:
+            return {"success": False, "error": f"Cannot delete area with {active_tasks} active tasks"}
+        
+        # All checks passed - delete the area (cascade will handle projects and tasks)
+        db.delete(area)
+        db.commit()
+        
+        return {"success": True, "message": f"Area '{area.name}' deleted successfully"}
+        
+    except Exception as e:
+        logger.error(f"Error deleting area: {e}")
         db.rollback()
         return {"success": False, "error": str(e)}
 

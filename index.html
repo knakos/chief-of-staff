@@ -1551,6 +1551,12 @@
       min-width: 60px;
     }
 
+    .area-tab .editing-field.disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      background: rgba(107, 114, 128, 0.1);
+    }
+
     .area-editing-form {
       position: absolute;
       top: 100%;
@@ -3073,7 +3079,18 @@
               [type + 's']: new Set([...prev[type + 's']].filter(id => id !== item.id))
             }));
           } else {
-            console.error(`Failed to save ${type}:`, response ? await response.text() : 'No response');
+            const errorText = response ? await response.text() : 'No response';
+            console.error(`Failed to save ${type}:`, errorText);
+            
+            // Show user-friendly error message for areas
+            if (type === 'area') {
+              try {
+                const errorData = JSON.parse(errorText);
+                alert(errorData.error || 'Failed to save area');
+              } catch {
+                alert('Failed to save area: ' + errorText);
+              }
+            }
           }
         } catch (error) {
           console.error(`Error saving ${type}:`, error);
@@ -3188,6 +3205,33 @@
           }
         } catch (error) {
           console.error('Error deleting project:', error);
+        }
+      };
+
+      const deleteArea = async (areaId) => {
+        try {
+          const response = await fetch(`http://127.0.0.1:8787/api/areas/${areaId}`, {
+            method: 'DELETE'
+          });
+          const result = await response.json();
+          if (result.success) {
+            // Reload areas data
+            await loadAreas();
+            // If the deleted area was selected, clear selection
+            if (selectedArea?.id === areaId) {
+              setSelectedArea(null);
+              setProjects([]);
+              setSelectedProject(null);
+              setTasks([]);
+            }
+          } else {
+            console.error('Failed to delete area:', result.error);
+            // Show user-friendly error message
+            alert(result.error);
+          }
+        } catch (error) {
+          console.error('Error deleting area:', error);
+          alert('Failed to delete area: ' + error.message);
         }
       };
 
@@ -3349,6 +3393,14 @@
                   }), destructive: true }
                 ];
               }
+              
+            case 'area':
+              const area = contextMenu.item;
+              return [
+                { label: 'Edit Area', action: () => startEditingItem('area', area.id) },
+                { label: 'separator' },
+                { label: 'Delete Area', action: () => deleteArea(area.id), destructive: true }
+              ];
               
             default:
               return [];
@@ -4498,12 +4550,7 @@
               // Active tasks section  
               if (activeTasks.length === 0 && archivedTasks.length === 0) {
                 elements.push(React.createElement('div', { key: 'no-tasks', className: 'no-tasks' }, [
-                  React.createElement('p', { key: 'text' }, 'No tasks in this project yet.'),
-                  React.createElement('button', { 
-                    key: 'create-first',
-                    className: 'btn btn-outline',
-                    onClick: createNewTask
-                  }, 'Create First Task')
+                  React.createElement('p', { key: 'text' }, 'No tasks in this project yet.')
                 ]));
               } else {
                 // Show active tasks
@@ -4607,10 +4654,12 @@
                     }, [
                       React.createElement('input', {
                         key: 'name-input',
-                        className: `editing-field ${isNew ? 'template' : ''}`,
+                        className: `editing-field ${isNew ? 'template' : ''} ${area.is_system ? 'disabled' : ''}`,
                         'data-field': `area-name-${area.id}`,
                         value: area.name,
                         tabIndex: 0,
+                        readOnly: area.is_system,
+                        title: area.is_system ? 'System areas cannot be renamed' : undefined,
                         onFocus: (e) => {
                           if (isNew && e.target.value === "New Area") {
                             e.target.select();
@@ -4721,6 +4770,18 @@
                     className: `area-tab ${selectedArea?.id === area.id ? 'active' : ''}`,
                     draggable: true,
                     onClick: () => handleAreaTabSelect(area),
+                    onContextMenu: (e) => {
+                      // Show context menu for non-system areas
+                      if (!area.is_system) {
+                        e.preventDefault();
+                        setContextMenu({
+                          x: e.clientX,
+                          y: e.clientY,
+                          type: 'area',
+                          item: area
+                        });
+                      }
+                    },
                     onDragStart: (e) => handleDragStart(e, area, index),
                     onDragEnd: handleDragEnd,
                     onDragOver: handleDragOver,
@@ -4994,6 +5055,41 @@
           ]);
         }
       };
+
+
+      // Click outside to close context menu
+      React.useEffect(() => {
+        const handleClickOutside = () => {
+          if (contextMenu) {
+            setContextMenu(null);
+          }
+        };
+
+        document.addEventListener('click', handleClickOutside);
+        return () => document.removeEventListener('click', handleClickOutside);
+      }, [contextMenu]);
+
+      // Click outside to save area editing
+      React.useEffect(() => {
+        const handleClickOutside = (event) => {
+          // Check if any areas are being edited
+          if (editingItems.areas.size > 0) {
+            const editingAreaId = Array.from(editingItems.areas)[0]; // Get first editing area
+            const editingArea = areas.find(a => a.id === editingAreaId);
+            
+            // Check if the click was outside the editing area
+            const editingElement = event.target.closest('.area-tab.editing, .area-editing-form');
+            
+            if (!editingElement && editingArea && !editingArea.is_new) {
+              // Auto-save the area if it's not a new area (new areas require explicit save)
+              saveItem('area', editingArea);
+            }
+          }
+        };
+
+        document.addEventListener('click', handleClickOutside, true);
+        return () => document.removeEventListener('click', handleClickOutside, true);
+      }, [editingItems.areas, areas]);
 
       console.log('🚀 STARTING APP - Rendering main app...');
       console.log('📊 APP STATE:', {
