@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <title>Chief of Staff</title>
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' ws://127.0.0.1:8787;">
+        content="default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' http://127.0.0.1:8787 ws://127.0.0.1:8787;">
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   
   <!-- Load design system -->
@@ -438,27 +438,27 @@
     }
 
     .email-sender {
-      font-weight: 500;
+      font-weight: var(--font-weight-medium);
       color: var(--text-primary);
-      font-size: 14px;
+      font-size: var(--font-size-sm);
     }
 
     .email-time {
-      font-size: 12px;
+      font-size: var(--font-size-xs);
       color: var(--text-muted);
     }
 
     .email-subject {
-      font-size: 14px;
-      font-weight: 500;
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-medium);
       color: var(--text-primary);
       margin-bottom: 6px;
     }
 
     .email-preview {
-      font-size: 13px;
+      font-size: var(--font-size-sm);
       color: var(--text-secondary);
-      line-height: 1.4;
+      line-height: var(--line-height-tight);
     }
 
     .email-priority {
@@ -651,6 +651,516 @@
     .loading-subtext {
       color: var(--text-muted);
       font-size: 12px;
+    }
+
+    /* Project Management Styles */
+    .project-management {
+      display: grid;
+      grid-template-columns: 2fr 1fr;  /* Task workspace gets more space */
+      gap: 24px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .task-panel, .project-navigator {
+      background: var(--surface);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .task-panel {
+      padding: 24px;
+    }
+
+    .project-navigator {
+      padding: 16px;
+    }
+
+    .panel-header {
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .panel-title {
+      margin: 0 0 4px 0;
+      color: var(--text-primary);
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .panel-subtitle {
+      margin: 0;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .panel-actions {
+      margin-bottom: 20px;
+      display: flex;
+      gap: 12px;
+    }
+
+    .navigator-header {
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .navigator-header h3 {
+      margin: 0;
+      color: var(--text-primary);
+      font-size: 16px;
+      font-weight: 600;
+      flex: 1;
+    }
+
+    /* Areas and Projects Tree */
+    .areas-list {
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .area-item {
+      margin-bottom: 16px;
+    }
+
+    .area-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px;
+      background: var(--surface-light);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .area-header:hover {
+      background: var(--surface-hover);
+      border-color: var(--brand-primary);
+    }
+
+    .area-item.selected .area-header {
+      background: rgba(59, 130, 246, 0.1);
+      border-color: var(--brand-primary);
+    }
+
+    .area-name {
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .area-count {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* Vertical Tabs for Areas */
+    .area-tabs-container {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    .area-tabs-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .area-tabs-header h3 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .area-tabs-wrapper {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .area-tabs-list {
+      display: flex;
+      flex-direction: row;
+      gap: 8px;
+      margin-bottom: 16px;
+      overflow-x: hidden;
+      overflow-y: visible;
+      flex-wrap: nowrap;
+    }
+
+    .area-tab {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      user-select: none;
+      position: relative;
+      white-space: nowrap;
+      flex-shrink: 0;
+      min-width: 120px;
+      max-width: 200px;
+    }
+
+    .area-tab:hover {
+      background: var(--surface-hover);
+      border-color: var(--brand-primary);
+    }
+
+    .area-tab.active {
+      background: rgba(59, 130, 246, 0.1);
+      border-color: var(--brand-primary);
+      color: var(--brand-primary);
+    }
+
+    .area-tab.dragging {
+      opacity: 0.5;
+      transform: rotate(2deg);
+    }
+
+    .area-tab.drag-over {
+      border-color: var(--brand-primary);
+      background: rgba(59, 130, 246, 0.05);
+    }
+
+    .area-tab-content {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      flex: 1;
+      min-width: 0;
+      gap: 8px;
+    }
+
+    .area-tab-name {
+      font-weight: var(--font-weight-semibold);
+      font-size: var(--font-size-sm);
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+    }
+
+    .area-tab.active .area-tab-name {
+      color: var(--brand-primary);
+    }
+
+    .area-tab-count {
+      font-size: 11px;
+      color: var(--text-muted);
+      background: var(--surface-hover);
+      padding: 2px 6px;
+      border-radius: 10px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .area-tab-drag-handle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      color: var(--text-muted);
+      cursor: grab;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      margin-left: 4px;
+      flex-shrink: 0;
+      font-size: 12px;
+    }
+
+    .area-tab:hover .area-tab-drag-handle {
+      opacity: 1;
+    }
+
+    .area-tab-drag-handle:active {
+      cursor: grabbing;
+    }
+
+    .area-overflow-menu {
+      position: relative;
+      flex-shrink: 0;
+    }
+
+    .area-overflow-tab {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      color: var(--text-muted);
+      font-size: 16px;
+      min-width: 50px;
+      height: 36px;
+    }
+
+    .area-overflow-tab:hover {
+      background: var(--surface-hover);
+      border-color: var(--brand-primary);
+      color: var(--brand-primary);
+    }
+
+    .area-overflow-dropdown {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      min-width: 200px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      z-index: 100;
+      max-height: 300px;
+      overflow-y: auto;
+      margin-top: 4px;
+    }
+
+    .area-overflow-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      cursor: pointer;
+      transition: background 0.2s ease;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .area-overflow-item:last-child {
+      border-bottom: none;
+    }
+
+    .area-overflow-item:hover {
+      background: var(--surface-hover);
+    }
+
+    .area-overflow-item.active {
+      background: rgba(59, 130, 246, 0.1);
+      color: var(--brand-primary);
+    }
+
+    .projects-list {
+      margin-top: 8px;
+      padding-left: 16px;
+    }
+
+    .project-actions {
+      margin-bottom: 12px;
+    }
+
+    .project-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      margin-bottom: 4px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .project-item:hover {
+      background: var(--surface-hover);
+    }
+
+    .project-item.selected {
+      background: rgba(59, 130, 246, 0.1);
+      border-color: var(--brand-primary);
+    }
+
+    .project-name {
+      font-weight: var(--font-weight-semibold);
+      color: var(--text-primary);
+      font-size: var(--font-size-sm);
+    }
+
+    .project-status, .task-status {
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .status-active {
+      background: rgba(34, 197, 94, 0.2);
+      color: rgb(34, 197, 94);
+    }
+
+    .status-paused {
+      background: rgba(251, 191, 36, 0.2);
+      color: rgb(251, 191, 36);
+    }
+
+    .status-completed {
+      background: rgba(59, 130, 246, 0.2);
+      color: rgb(59, 130, 246);
+    }
+
+    .status-archived {
+      background: rgba(107, 114, 128, 0.2);
+      color: rgb(107, 114, 128);
+    }
+
+    .status-pending {
+      background: rgba(156, 163, 175, 0.2);
+      color: rgb(156, 163, 175);
+    }
+
+    .status-in_progress {
+      background: rgba(59, 130, 246, 0.2);
+      color: rgb(59, 130, 246);
+    }
+
+    .status-blocked {
+      background: rgba(239, 68, 68, 0.2);
+      color: rgb(239, 68, 68);
+    }
+
+    .project-task-count {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* Task List */
+    .task-list {
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .task-item {
+      display: flex;
+      padding: 12px;
+      margin-bottom: 8px;
+      background: var(--surface-light);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .task-item:hover {
+      background: var(--surface-hover);
+      border-color: var(--brand-primary);
+    }
+
+    .task-item.selected {
+      background: rgba(59, 130, 246, 0.1);
+      border-color: var(--brand-primary);
+    }
+
+    .task-content {
+      flex: 1;
+      margin-left: 12px;
+    }
+
+    .task-title {
+      margin: 0 0 4px 0;
+      font-size: var(--font-size-sm);
+      font-weight: var(--font-weight-semibold);
+      color: var(--text-primary);
+    }
+
+    .task-description {
+      margin: 0 0 8px 0;
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary);
+      line-height: var(--line-height-tight);
+    }
+
+    .task-meta {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .task-sponsor, .task-owner, .task-due {
+      font-size: 11px;
+      color: var(--text-muted);
+      padding: 2px 6px;
+      background: var(--surface);
+      border-radius: 4px;
+    }
+
+    .no-tasks {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+    }
+
+    .no-tasks p {
+      margin: 0 0 16px 0;
+    }
+
+    .task-detail-empty, .email-detail-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      text-align: center;
+      padding: 40px;
+    }
+
+    .btn.btn-sm {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+
+    .btn.btn-outline {
+      background: transparent;
+      color: var(--brand-primary);
+      border: 1px solid var(--brand-primary);
+    }
+
+    .btn.btn-outline:hover {
+      background: var(--brand-primary);
+      color: white;
+    }
+
+    /* Responsive adjustments for project management */
+    @media (max-width: 768px) {
+      .project-management {
+        grid-template-columns: 1fr;
+        grid-template-rows: 1fr 300px;  /* Tasks first, then compact navigator */
+        gap: 16px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .project-management {
+        gap: 12px;
+      }
+      
+      .task-panel, .project-navigator {
+        padding: 16px;
+      }
     }
 
     /* Assessment flags with uniform height */
@@ -952,6 +1462,24 @@
       const [showFullRecipients, setShowFullRecipients] = useState(false);
       const [emailsLoading, setEmailsLoading] = useState(false);
       
+      // Project Management state
+      const [areas, setAreas] = useState([]);
+      const [projects, setProjects] = useState([]);
+      const [tasks, setTasks] = useState([]);
+      const [selectedArea, setSelectedArea] = useState(null);
+      const [selectedProject, setSelectedProject] = useState(null);
+      
+      // Area tabs state
+      const [areaTabOrder, setAreaTabOrder] = useState([]);
+      const [visibleTabsCount, setVisibleTabsCount] = useState(8);
+      const [showOverflowMenu, setShowOverflowMenu] = useState(false);
+      const [draggedTab, setDraggedTab] = useState(null);
+      const [selectedTask, setSelectedTask] = useState(null);
+      const [projectsLoading, setProjectsLoading] = useState(false);
+      const [showNewAreaForm, setShowNewAreaForm] = useState(false);
+      const [showNewProjectForm, setShowNewProjectForm] = useState(false);
+      const [showNewTaskForm, setShowNewTaskForm] = useState(false);
+      
       // Context menu state
       const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, email: null });
       
@@ -984,6 +1512,69 @@
         }
       };
 
+      // Project Management Functions
+      const loadAreas = async () => {
+        try {
+          const response = await fetch('http://127.0.0.1:8787/api/areas');
+          if (response.ok) {
+            const areasData = await response.json();
+            setAreas(areasData);
+            return areasData;
+          }
+        } catch (error) {
+          console.error('Failed to load areas:', error);
+        }
+      };
+
+      const loadProjectsForArea = async (areaId) => {
+        try {
+          const response = await fetch(`http://127.0.0.1:8787/api/areas/${areaId}/projects`);
+          if (response.ok) {
+            const projectsData = await response.json();
+            setProjects(projectsData);
+            return projectsData;
+          }
+        } catch (error) {
+          console.error('Failed to load projects:', error);
+        }
+      };
+
+      const loadTasksForProject = async (projectId) => {
+        try {
+          const response = await fetch(`http://127.0.0.1:8787/api/projects/${projectId}`);
+          if (response.ok) {
+            const projectData = await response.json();
+            setTasks(projectData.tasks || []);
+            return projectData.tasks || [];
+          }
+        } catch (error) {
+          console.error('Failed to load tasks:', error);
+        }
+      };
+
+      const loadAllProjectData = async () => {
+        setProjectsLoading(true);
+        try {
+          const areasData = await loadAreas();
+          if (areasData && areasData.length > 0) {
+            // Select first area by default and load its projects
+            const firstArea = areasData[0];
+            setSelectedArea(firstArea);
+            const projectsData = await loadProjectsForArea(firstArea.id);
+            if (projectsData && projectsData.length > 0) {
+              // Select first project and load its tasks
+              const firstProject = projectsData[0];
+              setSelectedProject(firstProject);
+              await loadTasksForProject(firstProject.id);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to load project data:', error);
+        } finally {
+          setProjectsLoading(false);
+        }
+      };
+
       // Handle route changes and load emails when needed
       useEffect(() => {
         console.log('Route changed to:', activeRoute);
@@ -993,7 +1584,13 @@
           console.log('📧 User navigated to emails - loading emails...');
           requestRecentEmails();
         }
-      }, [activeRoute, emails.length, emailsLoading]);
+        
+        // Load project data when user navigates to projects route and data hasn't been loaded yet
+        if (activeRoute === 'projects' && areas.length === 0 && !projectsLoading) {
+          console.log('📋 User navigated to projects - loading project data...');
+          loadAllProjectData();
+        }
+      }, [activeRoute, emails.length, emailsLoading, areas.length]);
 
       // WebSocket connection - Initialize on startup
       useEffect(() => {
@@ -1359,6 +1956,27 @@
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, [messages]);
 
+      // Initialize area tab order when areas are loaded
+      useEffect(() => {
+        if (areas.length > 0 && areaTabOrder.length === 0) {
+          setAreaTabOrder(areas.map(area => area.id));
+        }
+      }, [areas, areaTabOrder.length]);
+
+      // Close overflow menu on outside click
+      useEffect(() => {
+        const handleOutsideClick = (event) => {
+          if (showOverflowMenu && !event.target.closest('.area-overflow-menu')) {
+            setShowOverflowMenu(false);
+          }
+        };
+
+        if (showOverflowMenu) {
+          document.addEventListener('click', handleOutsideClick);
+          return () => document.removeEventListener('click', handleOutsideClick);
+        }
+      }, [showOverflowMenu]);
+
       // Handle context menu interactions
       useEffect(() => {
         const handleClick = () => setContextMenu({ visible: false, x: 0, y: 0, email: null });
@@ -1611,6 +2229,89 @@
         }
       };
 
+      // Area tabs utility functions
+      const getOrderedAreas = () => {
+        if (areaTabOrder.length === 0) return areas;
+        return areaTabOrder.map(id => areas.find(area => area.id === id)).filter(Boolean);
+      };
+
+      const getVisibleAreas = () => {
+        const ordered = getOrderedAreas();
+        return ordered.slice(0, visibleTabsCount);
+      };
+
+      const getOverflowAreas = () => {
+        const ordered = getOrderedAreas();
+        return ordered.slice(visibleTabsCount);
+      };
+
+      const moveAreaTab = (fromIndex, toIndex) => {
+        const newOrder = [...areaTabOrder];
+        const [moved] = newOrder.splice(fromIndex, 1);
+        newOrder.splice(toIndex, 0, moved);
+        setAreaTabOrder(newOrder);
+      };
+
+      const handleAreaTabSelect = async (area) => {
+        try {
+          setSelectedArea(area);
+          setSelectedProject(null);
+          setTasks([]);
+          const projectsData = await loadProjectsForArea(area.id);
+          if (projectsData && projectsData.length > 0) {
+            const firstProject = projectsData[0];
+            setSelectedProject(firstProject);
+            await loadTasksForProject(firstProject.id);
+          }
+        } catch (error) {
+          console.error('Error loading area projects:', error);
+        }
+      };
+
+      // Drag and drop handlers for area tabs
+      const handleDragStart = (e, area, index) => {
+        setDraggedTab({ area, index });
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/html', e.target.outerHTML);
+        e.target.classList.add('dragging');
+      };
+
+      const handleDragEnd = (e) => {
+        e.target.classList.remove('dragging');
+        setDraggedTab(null);
+        // Remove drag-over class from all tabs
+        document.querySelectorAll('.area-tab').forEach(tab => {
+          tab.classList.remove('drag-over');
+        });
+      };
+
+      const handleDragOver = (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+      };
+
+      const handleDragEnter = (e) => {
+        e.preventDefault();
+        e.target.closest('.area-tab')?.classList.add('drag-over');
+      };
+
+      const handleDragLeave = (e) => {
+        e.preventDefault();
+        if (!e.target.closest('.area-tab')?.contains(e.relatedTarget)) {
+          e.target.closest('.area-tab')?.classList.remove('drag-over');
+        }
+      };
+
+      const handleDrop = (e, targetIndex) => {
+        e.preventDefault();
+        e.target.closest('.area-tab')?.classList.remove('drag-over');
+        
+        if (draggedTab && draggedTab.index !== targetIndex) {
+          moveAreaTab(draggedTab.index, targetIndex);
+        }
+        setDraggedTab(null);
+      };
+
       // Email content processing functions
       const processEmailContent = (content) => {
         if (!content) return 'No content available';
@@ -1697,6 +2398,16 @@
           return 'No recipients available';
         }
         
+        // Debug logging for support@polispark.gr issue
+        if (email.sender && email.sender.includes('support@polispark.gr')) {
+          console.log('🔍 DEBUG: support@polispark.gr email recipients:', {
+            sender: email.sender,
+            sender_name: email.sender_name,
+            to_recipients: email.to_recipients,
+            cc_recipients: email.cc_recipients,
+            bcc_recipients: email.bcc_recipients
+          });
+        }
         
         const sections = [];
         
@@ -2349,11 +3060,218 @@
         ]);
       };
 
+      // Project Management Render Functions
+      const renderTaskWorkspace = () => {
+        if (projectsLoading) {
+          return React.createElement('div', { className: 'task-panel loading' }, [
+            React.createElement('div', { key: 'spinner', className: 'loading-spinner' }),
+            React.createElement('p', { key: 'text' }, 'Loading project data...')
+          ]);
+        }
+
+        if (!selectedProject) {
+          return React.createElement('div', { className: 'task-panel' }, [
+            React.createElement('div', { key: 'empty', className: 'task-detail-empty' }, [
+              React.createElement('div', { key: 'icon', className: 'empty-icon' }, 
+                React.createElement('svg', { width: 48, height: 48, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2 }, [
+                  React.createElement('path', { key: 'path', d: 'M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z' })
+                ])
+              ),
+              React.createElement('h3', { key: 'title', className: 'empty-title' }, 'Project Task Management'),
+              React.createElement('p', { key: 'desc', className: 'empty-description' }, 
+                'Select a project from the navigator to manage tasks and track progress.'
+              )
+            ])
+          ]);
+        }
+
+        return React.createElement('div', { className: 'task-panel' }, [
+          React.createElement('div', { key: 'header', className: 'panel-header' }, [
+            React.createElement('h2', { key: 'title', className: 'panel-title' }, selectedProject.name),
+            React.createElement('p', { key: 'subtitle', className: 'panel-subtitle' }, 
+              `Area: ${selectedArea?.name || 'Unknown'} • ${tasks.length} task${tasks.length !== 1 ? 's' : ''}`
+            )
+          ]),
+          React.createElement('div', { key: 'actions', className: 'panel-actions' }, [
+            React.createElement('button', { 
+              key: 'new-task',
+              className: 'btn btn-primary',
+              onClick: () => setShowNewTaskForm(true)
+            }, '+ New Task')
+          ]),
+          React.createElement('div', { key: 'task-list', className: 'task-list' }, 
+            tasks.length === 0 ? [
+              React.createElement('div', { key: 'no-tasks', className: 'no-tasks' }, [
+                React.createElement('p', { key: 'text' }, 'No tasks in this project yet.'),
+                React.createElement('button', { 
+                  key: 'create-first',
+                  className: 'btn btn-outline',
+                  onClick: () => setShowNewTaskForm(true)
+                }, 'Create First Task')
+              ])
+            ] : tasks.map(task => 
+              React.createElement('div', { 
+                key: task.id, 
+                className: `task-item ${selectedTask?.id === task.id ? 'selected' : ''}`,
+                onClick: () => setSelectedTask(task)
+              }, [
+                React.createElement('div', { key: 'status', className: `task-status status-${task.status}` }, task.status),
+                React.createElement('div', { key: 'content', className: 'task-content' }, [
+                  React.createElement('h4', { key: 'title', className: 'task-title' }, task.title),
+                  React.createElement('p', { key: 'desc', className: 'task-description' }, task.description || 'No description'),
+                  React.createElement('div', { key: 'meta', className: 'task-meta' }, [
+                    task.sponsor_email ? React.createElement('span', { key: 'sponsor', className: 'task-sponsor' }, 
+                      `Sponsor: ${task.sponsor_email}`) : null,
+                    task.owner_email ? React.createElement('span', { key: 'owner', className: 'task-owner' }, 
+                      `Owner: ${task.owner_email}`) : null,
+                    task.due_date ? React.createElement('span', { key: 'due', className: 'task-due' }, 
+                      `Due: ${new Date(task.due_date).toLocaleDateString()}`) : null
+                  ].filter(Boolean))
+                ])
+              ])
+            )
+          )
+        ]);
+      };
+
+      const renderProjectNavigator = () => {
+        if (projectsLoading) {
+          return React.createElement('div', { className: 'project-navigator loading' }, [
+            React.createElement('div', { key: 'spinner', className: 'loading-spinner' }),
+            React.createElement('p', { key: 'text' }, 'Loading areas and projects...')
+          ]);
+        }
+
+        const visibleAreas = getVisibleAreas();
+        const overflowAreas = getOverflowAreas();
+        const hasOverflow = overflowAreas.length > 0;
+
+        return React.createElement('div', { className: 'project-navigator' }, [
+          React.createElement('div', { key: 'container', className: 'area-tabs-container' }, [
+            // Header with title and new area button
+            React.createElement('div', { key: 'header', className: 'area-tabs-header' }, [
+              React.createElement('h3', { key: 'title' }, 'Areas'),
+              React.createElement('button', { 
+                key: 'new-area',
+                className: 'btn btn-sm btn-outline',
+                onClick: () => setShowNewAreaForm(true)
+              }, '+ Area')
+            ]),
+            
+            // Tabs wrapper
+            React.createElement('div', { key: 'wrapper', className: 'area-tabs-wrapper' }, [
+              // Visible tabs
+              React.createElement('div', { key: 'tabs', className: 'area-tabs-list' }, [
+                // Render visible area tabs
+                ...visibleAreas.map((area, index) => 
+                  React.createElement('div', { 
+                    key: area.id,
+                    className: `area-tab ${selectedArea?.id === area.id ? 'active' : ''}`,
+                    draggable: true,
+                    onClick: () => handleAreaTabSelect(area),
+                    onDragStart: (e) => handleDragStart(e, area, index),
+                    onDragEnd: handleDragEnd,
+                    onDragOver: handleDragOver,
+                    onDragEnter: handleDragEnter,
+                    onDragLeave: handleDragLeave,
+                    onDrop: (e) => handleDrop(e, index)
+                  }, [
+                    React.createElement('div', { key: 'content', className: 'area-tab-content' }, [
+                      React.createElement('div', { key: 'name', className: 'area-tab-name' }, area.name),
+                      React.createElement('div', { key: 'count', className: 'area-tab-count' }, 
+                        `${area.project_count || 0} project${(area.project_count || 0) !== 1 ? 's' : ''}`)
+                    ]),
+                    React.createElement('div', { 
+                      key: 'drag-handle', 
+                      className: 'area-tab-drag-handle',
+                      title: 'Drag to reorder'
+                    }, '⋮⋮')
+                  ])
+                ),
+                
+                // Overflow menu if needed
+                hasOverflow ? React.createElement('div', { key: 'overflow', className: 'area-overflow-menu' }, [
+                  React.createElement('div', { 
+                    key: 'tab',
+                    className: 'area-overflow-tab',
+                    onClick: () => setShowOverflowMenu(!showOverflowMenu)
+                  }, '⋯'),
+                  
+                  showOverflowMenu ? React.createElement('div', { key: 'dropdown', className: 'area-overflow-dropdown' }, 
+                    overflowAreas.map(area => 
+                      React.createElement('div', { 
+                        key: area.id,
+                        className: `area-overflow-item ${selectedArea?.id === area.id ? 'active' : ''}`,
+                        onClick: () => {
+                          handleAreaTabSelect(area);
+                          setShowOverflowMenu(false);
+                        }
+                      }, [
+                        React.createElement('div', { key: 'content', className: 'area-tab-content' }, [
+                          React.createElement('div', { key: 'name', className: 'area-tab-name' }, area.name),
+                          React.createElement('div', { key: 'count', className: 'area-tab-count' }, 
+                            `${area.project_count || 0} project${(area.project_count || 0) !== 1 ? 's' : ''}`)
+                        ])
+                      ])
+                    )
+                  ) : null
+                ]) : null
+              ]),
+              
+              // Projects for selected area
+              selectedArea ? React.createElement('div', { key: 'projects-section', className: 'projects-section' }, [
+                React.createElement('div', { key: 'projects-header', className: 'projects-header' }, [
+                  React.createElement('h4', { key: 'title', style: { margin: 0, fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)' } }, 
+                    `${selectedArea.name} Projects`),
+                  React.createElement('button', { 
+                    key: 'new-project',
+                    className: 'btn btn-sm btn-outline',
+                    onClick: () => setShowNewProjectForm(true)
+                  }, '+ Project')
+                ]),
+                React.createElement('div', { key: 'projects-list', className: 'projects-list', style: { marginTop: '12px' } }, 
+                  projects.length === 0 ? [
+                    React.createElement('div', { key: 'no-projects', className: 'no-projects', style: { padding: '16px', textAlign: 'center', color: 'var(--text-muted)' } }, 
+                      'No projects in this area yet.')
+                  ] : projects.map(project => 
+                    React.createElement('div', { 
+                      key: project.id, 
+                      className: `project-item ${selectedProject?.id === project.id ? 'selected' : ''}`,
+                      onClick: () => {
+                        const handleProjectClick = async () => {
+                          try {
+                            setSelectedProject(project);
+                            await loadTasksForProject(project.id);
+                          } catch (error) {
+                            console.error('Error loading project tasks:', error);
+                          }
+                        };
+                        handleProjectClick();
+                      }
+                    }, [
+                      React.createElement('span', { key: 'name', className: 'project-name' }, project.name),
+                      React.createElement('span', { key: 'status', className: `project-status status-${project.status}` }, project.status),
+                      React.createElement('span', { key: 'count', className: 'project-task-count' }, 
+                        `${project.task_count || 0} task${(project.task_count || 0) !== 1 ? 's' : ''}`)
+                    ])
+                  )
+                )
+              ]) : null
+            ])
+          ])
+        ]);
+      };
+
       const renderMainContent = () => {
         if (activeRoute === 'emails') {
           return React.createElement('div', { key: 'emails', className: 'email-management' }, [
             React.createElement('div', { key: `email-detail-container-${showFullRecipients}` }, renderEmailDetail()),
             React.createElement('div', { key: 'email-list-container' }, renderEmailList())
+          ]);
+        } else if (activeRoute === 'projects') {
+          return React.createElement('div', { key: 'projects', className: 'project-management' }, [
+            React.createElement('div', { key: 'task-workspace-container' }, renderTaskWorkspace()),
+            React.createElement('div', { key: 'project-navigator-container' }, renderProjectNavigator())
           ]);
         } else {
           // For other routes, show placeholder content

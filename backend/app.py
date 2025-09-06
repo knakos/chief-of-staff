@@ -987,6 +987,264 @@ async def get_project_tasks(project_id: str, db: Session = Depends(get_db)):
     ).order_by(Task.created_at.desc()).all()
     return [{"id": t.id, "title": t.title, "status": t.status} for t in tasks]
 
+# ===== PROJECT MANAGEMENT API ENDPOINTS =====
+
+@app.get("/api/areas")
+async def get_areas(db: Session = Depends(get_db)):
+    """Get all areas with project and task counts"""
+    areas = []
+    for area in db.query(Area).order_by(Area.sort_order).all():
+        project_count = db.query(Project).filter_by(area_id=area.id).count()
+        task_count = db.query(Task).join(Project).filter(Project.area_id == area.id).count()
+        areas.append({
+            "id": area.id,
+            "name": area.name,
+            "description": area.description,
+            "color": area.color,
+            "is_default": area.is_default,
+            "is_system": area.is_system,
+            "sort_order": area.sort_order,
+            "project_count": project_count,
+            "task_count": task_count,
+            "created_at": area.created_at.isoformat() if area.created_at else None
+        })
+    return areas
+
+@app.post("/api/areas")
+async def create_area(area_data: dict, db: Session = Depends(get_db)):
+    """Create new area with auto-generated catch-all Tasks project"""
+    try:
+        # Create the area
+        new_area = Area(
+            name=area_data["name"],
+            description=area_data.get("description", ""),
+            color=area_data.get("color", "#3B82F6"),
+            sort_order=area_data.get("sort_order", 99)
+        )
+        db.add(new_area)
+        db.flush()  # Get the ID
+        
+        # Create catch-all Tasks project for this area
+        tasks_project = Project(
+            name="Tasks",
+            description=f"General {area_data['name'].lower()} tasks not assigned to specific projects",
+            area_id=new_area.id,
+            is_catch_all=True,
+            is_system=True,
+            sort_order=0,
+            priority=3
+        )
+        db.add(tasks_project)
+        db.commit()
+        
+        return {"success": True, "area_id": new_area.id, "project_id": tasks_project.id}
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/areas/{area_id}/projects")
+async def get_area_projects(area_id: str, db: Session = Depends(get_db)):
+    """Get all projects in an area with task counts"""
+    projects = []
+    for project in db.query(Project).filter_by(area_id=area_id).order_by(Project.sort_order).all():
+        task_count = db.query(Task).filter_by(project_id=project.id).count()
+        completed_count = db.query(Task).filter_by(project_id=project.id, status="completed").count()
+        overdue_count = db.query(Task).filter(
+            Task.project_id == project.id,
+            Task.due_date < datetime.utcnow(),
+            Task.status != "completed"
+        ).count()
+        
+        projects.append({
+            "id": project.id,
+            "name": project.name,
+            "description": project.description,
+            "status": project.status,
+            "priority": project.priority,
+            "is_catch_all": project.is_catch_all,
+            "is_system": project.is_system,
+            "color": project.color,
+            "task_count": task_count,
+            "completed_count": completed_count,
+            "overdue_count": overdue_count,
+            "created_at": project.created_at.isoformat() if project.created_at else None
+        })
+    return projects
+
+@app.post("/api/projects")
+async def create_project(project_data: dict, db: Session = Depends(get_db)):
+    """Create new project"""
+    try:
+        new_project = Project(
+            name=project_data["name"],
+            description=project_data.get("description", ""),
+            area_id=project_data["area_id"],
+            status=project_data.get("status", "active"),
+            priority=project_data.get("priority", 3),
+            color=project_data.get("color"),
+            sort_order=project_data.get("sort_order", 99)
+        )
+        db.add(new_project)
+        db.commit()
+        return {"success": True, "project_id": new_project.id}
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/projects/{project_id}")
+async def get_project_detail(project_id: str, db: Session = Depends(get_db)):
+    """Get detailed project info with tasks"""
+    project = db.query(Project).filter_by(id=project_id).first()
+    if not project:
+        return {"success": False, "error": "Project not found"}
+    
+    tasks = []
+    for task in db.query(Task).filter_by(project_id=project_id).order_by(Task.created_at.desc()).all():
+        tasks.append({
+            "id": task.id,
+            "title": task.title,
+            "description": task.description,
+            "objective": task.objective,
+            "status": task.status,
+            "priority": task.priority,
+            "due_date": task.due_date.isoformat() if task.due_date else None,
+            "sponsor_email": task.sponsor_email,
+            "owner_email": task.owner_email,
+            "created_at": task.created_at.isoformat() if task.created_at else None,
+            "completed_at": task.completed_at.isoformat() if task.completed_at else None
+        })
+    
+    return {
+        "success": True,
+        "project": {
+            "id": project.id,
+            "name": project.name,
+            "description": project.description,
+            "status": project.status,
+            "priority": project.priority,
+            "is_catch_all": project.is_catch_all,
+            "color": project.color,
+            "area": {
+                "id": project.area.id,
+                "name": project.area.name,
+                "color": project.area.color
+            }
+        },
+        "tasks": tasks
+    }
+
+@app.post("/api/tasks")
+async def create_task(task_data: dict, db: Session = Depends(get_db)):
+    """Create new task"""
+    try:
+        new_task = Task(
+            title=task_data["title"],
+            description=task_data.get("description", ""),
+            objective=task_data.get("objective", ""),
+            project_id=task_data["project_id"],
+            status=task_data.get("status", "pending"),
+            priority=task_data.get("priority", 3),
+            due_date=datetime.fromisoformat(task_data["due_date"]) if task_data.get("due_date") else None,
+            sponsor_email=task_data.get("sponsor_email"),
+            owner_email=task_data.get("owner_email"),
+            parent_task_id=task_data.get("parent_task_id")
+        )
+        db.add(new_task)
+        db.commit()
+        return {"success": True, "task_id": new_task.id}
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "error": str(e)}
+
+@app.put("/api/tasks/{task_id}")
+async def update_task(task_id: str, task_data: dict, db: Session = Depends(get_db)):
+    """Update existing task"""
+    try:
+        task = db.query(Task).filter_by(id=task_id).first()
+        if not task:
+            return {"success": False, "error": "Task not found"}
+        
+        # Update fields
+        for field, value in task_data.items():
+            if field == "due_date" and value:
+                setattr(task, field, datetime.fromisoformat(value))
+            elif field == "completed_at" and value:
+                setattr(task, field, datetime.fromisoformat(value))
+            elif hasattr(task, field):
+                setattr(task, field, value)
+        
+        # Set completed_at when status changes to completed
+        if task_data.get("status") == "completed" and not task.completed_at:
+            task.completed_at = datetime.utcnow()
+        elif task_data.get("status") != "completed":
+            task.completed_at = None
+        
+        db.commit()
+        return {"success": True}
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "error": str(e)}
+
+@app.delete("/api/tasks/{task_id}")
+async def delete_task(task_id: str, db: Session = Depends(get_db)):
+    """Delete task (no archiving required)"""
+    try:
+        task = db.query(Task).filter_by(id=task_id).first()
+        if not task:
+            return {"success": False, "error": "Task not found"}
+        
+        db.delete(task)
+        db.commit()
+        return {"success": True}
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "error": str(e)}
+
+@app.put("/api/projects/{project_id}")
+async def update_project(project_id: str, project_data: dict, db: Session = Depends(get_db)):
+    """Update existing project"""
+    try:
+        project = db.query(Project).filter_by(id=project_id).first()
+        if not project:
+            return {"success": False, "error": "Project not found"}
+        
+        # Update fields
+        for field, value in project_data.items():
+            if hasattr(project, field):
+                setattr(project, field, value)
+        
+        db.commit()
+        return {"success": True}
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "error": str(e)}
+
+@app.delete("/api/projects/{project_id}")
+async def delete_project(project_id: str, db: Session = Depends(get_db)):
+    """Delete project (only if archived and not system project)"""
+    try:
+        project = db.query(Project).filter_by(id=project_id).first()
+        if not project:
+            return {"success": False, "error": "Project not found"}
+        
+        if project.is_system:
+            return {"success": False, "error": "Cannot delete system projects"}
+        
+        if project.status != "archived":
+            return {"success": False, "error": "Project must be archived before deletion"}
+        
+        # Check if there are any tasks
+        task_count = db.query(Task).filter_by(project_id=project_id).count()
+        if task_count > 0:
+            return {"success": False, "error": f"Cannot delete project with {task_count} tasks"}
+        
+        db.delete(project)
+        db.commit()
+        return {"success": True}
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "error": str(e)}
+
 @app.get("/api/interviews/active")
 async def get_active_interviews(db: Session = Depends(get_db)):
     """Get pending interviews"""

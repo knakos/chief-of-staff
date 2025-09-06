@@ -79,9 +79,12 @@ class Task(Base):
     id = Column(String, primary_key=True, default=new_id)
     title = Column(String, nullable=False)
     description = Column(Text)
+    objective = Column(Text)  # Specific goal/outcome for this task
     status = Column(String, default="pending", index=True)  # pending, in_progress, completed, blocked
     priority = Column(Integer, default=3)
     due_date = Column(DateTime)
+    sponsor_email = Column(String)  # Who wants this task, who will be updated when complete
+    owner_email = Column(String)    # Who is responsible for completing this task
     created_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

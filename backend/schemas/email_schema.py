@@ -163,24 +163,24 @@ def create_email_from_com(outlook_item, skip_analysis: bool = False) -> EmailSch
                             if name == sender_name or sender_name in name or name in sender_name:
                                 is_sender = True
                         
-                        # Only add non-sender recipients
-                        if not is_sender:
-                            recipient_data = {
-                                "name": name,
-                                "address": address
-                            }
-                            
-                            # Recipient Type: 1=To, 2=CC, 3=BCC
-                            recipient_type = getattr(recipient, 'Type', 1)
-                            if recipient_type == 1:  # To
-                                to_recipients.append(recipient_data)
-                            elif recipient_type == 2:  # CC
-                                cc_recipients.append(recipient_data)
-                            elif recipient_type == 3:  # BCC
-                                bcc_recipients.append(recipient_data)
-                            else:
-                                # Default to To if type is unclear
-                                to_recipients.append(recipient_data)
+                        # Always include recipients - sender may legitimately send to themselves
+                        # (e.g., BCC scenarios, confirmation emails, etc.)
+                        recipient_data = {
+                            "name": name,
+                            "address": address
+                        }
+                        
+                        # Recipient Type: 1=To, 2=CC, 3=BCC
+                        recipient_type = getattr(recipient, 'Type', 1)
+                        if recipient_type == 1:  # To
+                            to_recipients.append(recipient_data)
+                        elif recipient_type == 2:  # CC
+                            cc_recipients.append(recipient_data)
+                        elif recipient_type == 3:  # BCC
+                            bcc_recipients.append(recipient_data)
+                        else:
+                            # Default to To if type is unclear
+                            to_recipients.append(recipient_data)
                 except Exception:
                     # Skip problematic individual recipients
                     continue

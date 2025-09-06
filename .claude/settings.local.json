@@ -48,7 +48,8 @@
       "Bash(sed:*)",
       "Bash(./scripts/start_all.sh:*)",
       "Bash(taskkill:*)",
-      "Read(//**)"
+      "Read(//**)",
+      "Bash(del cos.db)"
     ],
     "deny": [],
     "ask": []

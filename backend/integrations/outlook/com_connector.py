@@ -427,28 +427,28 @@ class OutlookCOMConnector:
                                     if name == sender_name or sender_name in name or name in sender_name:
                                         is_sender = True
                                 
-                                # Only add non-sender recipients
-                                if not is_sender:
-                                    recipient_data = {
-                                        "name": name,
-                                        "address": address
-                                    }
-                                    
-                                    # Add separate email field if address looks like actual email
-                                    if address and '@' in address and not address.startswith('/'):
-                                        recipient_data["email"] = address
-                                    
-                                    # Recipient Type: 1=To, 2=CC, 3=BCC
-                                    recipient_type = getattr(recipient, 'Type', 1)
-                                    if recipient_type == 1:  # To
-                                        to_recipients.append(recipient_data)
-                                    elif recipient_type == 2:  # CC
-                                        cc_recipients.append(recipient_data)
-                                    elif recipient_type == 3:  # BCC
-                                        bcc_recipients.append(recipient_data)
-                                    else:
-                                        # Default to To if type is unclear
-                                        to_recipients.append(recipient_data)
+                                # Always include recipients - sender may legitimately send to themselves
+                                # (e.g., BCC scenarios, confirmation emails, etc.)
+                                recipient_data = {
+                                    "name": name,
+                                    "address": address
+                                }
+                                
+                                # Add separate email field if address looks like actual email
+                                if address and '@' in address and not address.startswith('/'):
+                                    recipient_data["email"] = address
+                                
+                                # Recipient Type: 1=To, 2=CC, 3=BCC
+                                recipient_type = getattr(recipient, 'Type', 1)
+                                if recipient_type == 1:  # To
+                                    to_recipients.append(recipient_data)
+                                elif recipient_type == 2:  # CC
+                                    cc_recipients.append(recipient_data)
+                                elif recipient_type == 3:  # BCC
+                                    bcc_recipients.append(recipient_data)
+                                else:
+                                    # Default to To if type is unclear
+                                    to_recipients.append(recipient_data)
                         except Exception as recipient_error:
                             logger.warning(f"Failed to extract individual recipient: {recipient_error}")
                             continue

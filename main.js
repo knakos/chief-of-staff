@@ -11,8 +11,8 @@ app.commandLine.appendSwitch('disable-gpu');
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: 1000,
-    height: 700,
+    width: 1650,
+    height: 1050,
     show: true,
     webPreferences: {
       contextIsolation: true,
@@ -25,14 +25,17 @@ function createWindow() {
   win.loadFile('index.html');
   
   // Development: disable cache and enable reload
-  if (process.env.NODE_ENV !== 'production') {
+  // Only open DevTools if explicitly in development mode
+  if (process.env.NODE_ENV === 'development' || process.argv.includes('--dev')) {
     win.webContents.openDevTools();
-    win.webContents.on('before-input-event', (event, input) => {
-      if (input.control && input.key.toLowerCase() === 'r') {
-        win.reload();
-      }
-    });
   }
+  
+  // Always enable Ctrl+R reload for convenience
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.control && input.key.toLowerCase() === 'r') {
+      win.reload();
+    }
+  });
 
   // Block random navigations/popups; open external links in the OS browser
   win.webContents.setWindowOpenHandler(({ url }) => {
