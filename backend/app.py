@@ -994,7 +994,11 @@ async def get_areas(db: Session = Depends(get_db)):
     """Get all areas with project and task counts"""
     areas = []
     for area in db.query(Area).order_by(Area.sort_order).all():
-        project_count = db.query(Project).filter_by(area_id=area.id).count()
+        # Count only active projects (exclude archived)
+        project_count = db.query(Project).filter(
+            Project.area_id == area.id,
+            Project.status != 'archived'
+        ).count()
         task_count = db.query(Task).join(Project).filter(Project.area_id == area.id).count()
         areas.append({
             "id": area.id,
@@ -1158,12 +1162,33 @@ async def get_area_projects(area_id: str, db: Session = Depends(get_db)):
 
 @app.post("/api/projects")
 async def create_project(project_data: dict, db: Session = Depends(get_db)):
-    """Create new project"""
+    """Create new project with auto-renaming for duplicates"""
     try:
+        area_id = project_data["area_id"]
+        requested_name = project_data["name"]
+        
+        # Auto-rename logic for duplicate names within the same area
+        def generate_unique_project_name(base_name: str, area_id: str) -> str:
+            existing_projects = db.query(Project).filter(Project.area_id == area_id).all()
+            existing_names = [p.name.lower() for p in existing_projects]
+            
+            unique_name = base_name
+            if unique_name.lower() not in existing_names:
+                return unique_name
+            
+            counter = 2
+            while f"{base_name} {counter}".lower() in existing_names:
+                counter += 1
+            
+            return f"{base_name} {counter}"
+        
+        # Generate unique name if needed
+        unique_name = generate_unique_project_name(requested_name, area_id)
+        
         new_project = Project(
-            name=project_data["name"],
+            name=unique_name,
             description=project_data.get("description", ""),
-            area_id=project_data["area_id"],
+            area_id=area_id,
             status=project_data.get("status", "active"),
             priority=project_data.get("priority", 3),
             color=project_data.get("color"),
@@ -1171,7 +1196,15 @@ async def create_project(project_data: dict, db: Session = Depends(get_db)):
         )
         db.add(new_project)
         db.commit()
-        return {"success": True, "project_id": new_project.id}
+        db.refresh(new_project)
+        
+        return {
+            "success": True, 
+            "project_id": new_project.id,
+            "name": new_project.name,  # Return the actual name used
+            "original_name": requested_name,  # Return original for debugging
+            "was_renamed": unique_name != requested_name
+        }
     except Exception as e:
         db.rollback()
         return {"success": False, "error": str(e)}
@@ -1367,7 +1400,7 @@ async def update_project(project_id: str, project_data: dict, db: Session = Depe
 
 @app.put("/api/projects/{project_id}/archive")
 async def archive_project(project_id: str, db: Session = Depends(get_db)):
-    """Archive a project"""
+    """Archive a project and block all active tasks"""
     try:
         project = db.query(Project).filter_by(id=project_id).first()
         if not project:
@@ -1376,9 +1409,26 @@ async def archive_project(project_id: str, db: Session = Depends(get_db)):
         if project.is_system:
             return {"success": False, "error": "Cannot archive system projects"}
         
+        # Update all active tasks to blocked status before archiving project
+        active_tasks = db.query(Task).filter(
+            Task.project_id == project_id,
+            Task.status == 'active'
+        ).all()
+        
+        blocked_tasks_count = 0
+        for task in active_tasks:
+            task.status = 'blocked'
+            blocked_tasks_count += 1
+        
+        # Archive the project
         project.status = "archived"
         db.commit()
-        return {"success": True}
+        
+        return {
+            "success": True, 
+            "blocked_tasks": blocked_tasks_count,
+            "message": f"Project archived. {blocked_tasks_count} active tasks were blocked."
+        }
     except Exception as e:
         db.rollback()
         return {"success": False, "error": str(e)}
@@ -1398,6 +1448,35 @@ async def restore_project(project_id: str, db: Session = Depends(get_db)):
         db.rollback()
         return {"success": False, "error": str(e)}
 
+@app.get("/api/projects/{project_id}/deletion-info")
+async def get_project_deletion_info(project_id: str, db: Session = Depends(get_db)):
+    """Get information about what will be deleted with this project"""
+    try:
+        project = db.query(Project).filter_by(id=project_id).first()
+        if not project:
+            return {"success": False, "error": "Project not found"}
+        
+        # Count direct tasks of this project
+        project_tasks = db.query(Task).filter_by(project_id=project_id).all()
+        task_count = len(project_tasks)
+        
+        # Count subtasks that belong to tasks of this project
+        subtask_count = 0
+        for task in project_tasks:
+            subtask_count += db.query(Task).filter_by(parent_task_id=task.id).count()
+        
+        total_task_count = task_count + subtask_count
+        
+        return {
+            "success": True, 
+            "task_count": task_count, 
+            "subtask_count": subtask_count, 
+            "total_task_count": total_task_count,
+            "project_name": project.name
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 @app.delete("/api/projects/{project_id}")
 async def delete_project(project_id: str, db: Session = Depends(get_db)):
     """Delete project (only if archived and not system project)"""
@@ -1412,14 +1491,21 @@ async def delete_project(project_id: str, db: Session = Depends(get_db)):
         if project.status != "archived":
             return {"success": False, "error": "Project must be archived before deletion"}
         
-        # Check if there are any tasks
-        task_count = db.query(Task).filter_by(project_id=project_id).count()
-        if task_count > 0:
-            return {"success": False, "error": f"Cannot delete project with {task_count} tasks"}
+        # Get task information for frontend warning (but allow cascade deletion)
+        # Count direct tasks of this project
+        project_tasks = db.query(Task).filter_by(project_id=project_id).all()
+        task_count = len(project_tasks)
+        
+        # Count subtasks that belong to tasks of this project
+        subtask_count = 0
+        for task in project_tasks:
+            subtask_count += db.query(Task).filter_by(parent_task_id=task.id).count()
+        
+        total_task_count = task_count + subtask_count
         
         db.delete(project)
         db.commit()
-        return {"success": True}
+        return {"success": True, "task_count": task_count, "subtask_count": subtask_count, "total_task_count": total_task_count}
     except Exception as e:
         db.rollback()
         return {"success": False, "error": str(e)}

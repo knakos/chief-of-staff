@@ -264,6 +264,11 @@ This architecture ensures the system is responsive during active use while preve
   - **No Overflow Menu**: Removed confusing [...] dropdown - carousel arrows are the single navigation method
   - **Carousel State**: Uses `carouselOffset` to track current position with automatic boundary checking
   - **Auto-Reset Logic**: Carousel offset automatically adjusts when areas are added/removed to prevent out-of-bounds
+- **🚨 ARCHIVED PROJECT DELETION (2025-09)**: Enhanced deletion capabilities for archived projects:
+  - **Cascade Deletion**: Archived projects can be permanently deleted with automatic cascade deletion of all tasks and subtasks
+  - **Enhanced Warnings**: Pre-deletion endpoint (`GET /api/projects/{project_id}/deletion-info`) provides task/subtask counts for user warnings
+  - **Safety Measures**: Detailed confirmation dialog shows exact count of items that will be permanently deleted
+  - **Database Integrity**: Leverages existing SQLAlchemy cascade relationships for proper cleanup
 - **Prompt Management**: All prompts stored as `.md` files in `llm/prompts/` - these define the core AI intelligence behavior
 - **Multi-Agent Coordination**: COS Orchestrator routes commands, specialized agents handle domain-specific tasks
 - **Interview Limits**: Context interviews limited to ≤1 per day to avoid user fatigue
@@ -343,7 +348,8 @@ class Task(Base):
 - `POST /api/projects` - Create new project
 - `GET /api/projects/{project_id}` - Get project details
 - `PUT /api/projects/{project_id}` - Update project
-- `DELETE /api/projects/{project_id}` - Delete project (archive first)
+- `GET /api/projects/{project_id}/deletion-info` - Get task/subtask counts for deletion warnings
+- `DELETE /api/projects/{project_id}` - Delete project (archive first) with cascade deletion
 
 **Tasks Management:**
 - `GET /api/projects/{project_id}/tasks` - Get tasks for project

@@ -1227,6 +1227,12 @@
       background-color: var(--bg-secondary);
     }
 
+    .non-editable {
+      cursor: default;
+      opacity: 0.7;
+      color: var(--text-secondary);
+    }
+
     .task-objective {
       margin: 0 0 8px 0;
       font-size: var(--font-size-sm);
@@ -1620,6 +1626,12 @@
     .btn.btn-sm {
       padding: 6px 12px;
       font-size: 12px;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      pointer-events: none;
     }
 
     .btn.btn-outline {
@@ -2462,10 +2474,22 @@
 
       // Initialize area tab order when areas are loaded
       useEffect(() => {
-        if (areas.length > 0 && areaTabOrder.length === 0) {
-          setAreaTabOrder(areas.map(area => area.id));
+        if (areas.length > 0) {
+          if (areaTabOrder.length === 0) {
+            // Initial load - set all area IDs
+            setAreaTabOrder(areas.map(area => area.id));
+          } else {
+            // Areas updated - sync tab order, removing invalid IDs and adding new ones
+            const currentAreaIds = new Set(areas.map(area => area.id));
+            const validTabOrder = areaTabOrder.filter(id => currentAreaIds.has(id));
+            const newAreaIds = areas.map(area => area.id).filter(id => !areaTabOrder.includes(id));
+            
+            if (validTabOrder.length !== areaTabOrder.length || newAreaIds.length > 0) {
+              setAreaTabOrder([...validTabOrder, ...newAreaIds]);
+            }
+          }
         }
-      }, [areas, areaTabOrder.length]);
+      }, [areas]);
 
       // Reset carousel offset when areas change to prevent out-of-bounds
       useEffect(() => {
@@ -2885,9 +2909,32 @@
       // Inline editing helpers
       const createNewArea = async () => {
         const tempId = `temp_${Date.now()}`;
+        
+        // Clear current selections to avoid dual highlighting
+        setSelectedArea(null);
+        setSelectedProject(null);
+        setProjects([]);
+        setTasks([]);
+        
+        // Generate unique name for new area
+        const generateUniqueName = (baseName) => {
+          const existingNames = areas.map(area => area.name.toLowerCase());
+          let uniqueName = baseName;
+          let counter = 1;
+          
+          while (existingNames.includes(uniqueName.toLowerCase())) {
+            counter++;
+            uniqueName = `${baseName} ${counter}`;
+          }
+          
+          return uniqueName;
+        };
+        
+        const uniqueName = generateUniqueName("New Area");
+        
         const newArea = {
           id: tempId,
-          name: "New Area",
+          name: uniqueName,
           description: "Area description",
           color: "#6366F1",
           is_editing: true,
@@ -2895,10 +2942,20 @@
         };
 
         setAreas(prev => [...prev, newArea]);
+        setAreaTabOrder(prev => [...prev, tempId]); // Add to tab order so it's visible
         setEditingItems(prev => ({
           ...prev,
           areas: new Set([...prev.areas, tempId])
         }));
+
+        // Ensure the new area is visible in carousel by scrolling to the end
+        setTimeout(() => {
+          const totalAreas = areas.length + 1; // +1 for the new area we just added
+          if (totalAreas > visibleTabsCount) {
+            // Set carousel offset to show the last areas (including the new one)
+            setCarouselOffset(Math.max(0, totalAreas - visibleTabsCount));
+          }
+        }, 10);
 
         // Focus the name field after render
         setTimeout(() => {
@@ -2913,9 +2970,13 @@
         if (!selectedArea) return;
         
         const tempId = `temp_${Date.now()}`;
+        
+        // Use default name - backend will handle auto-renaming for conflicts
+        const defaultName = "New Project";
+        
         const newProject = {
           id: tempId,
-          name: "New Project",
+          name: defaultName,
           description: "Project description",
           status: "active",
           priority: 3,
@@ -3061,10 +3122,54 @@
             // This ensures the UI shows the updated values immediately
             console.log(`Successfully saved ${type} ${item.id} (isNewItem: ${isNewItem})`);
             
+            // Get response data for new items to handle auto-selection
+            const responseData = await response.json();
+            
             // Always reload from server to confirm the save worked and get latest data
             console.log(`Reloading ${type} data to confirm save (isNewItem: ${isNewItem})`);
             if (type === 'area') {
-              await loadAreas();
+              const freshAreas = await loadAreas();
+              
+              // If this was a new area, automatically select it
+              if (isNewItem && responseData.success && responseData.area_id) {
+                console.log(`Auto-selecting newly created area: ${responseData.area_id}`);
+                const newArea = freshAreas?.find(a => a.id === responseData.area_id);
+                if (newArea) {
+                  setSelectedArea(newArea);
+                  
+                  // Load projects for the new area and select first project if available
+                  const projectsData = await loadProjectsForArea(newArea.id);
+                  if (projectsData && projectsData.length > 0) {
+                    const firstProject = projectsData[0];
+                    setSelectedProject(firstProject);
+                    await loadTasksForProject(firstProject.id);
+                  } else {
+                    setSelectedProject(null);
+                    setTasks([]);
+                  }
+                  
+                  // Ensure the new area is visible in the carousel
+                  const areaIndex = freshAreas.findIndex(a => a.id === newArea.id);
+                  if (areaIndex >= 0) {
+                    // If area is not in current visible range, adjust carousel offset
+                    const currentOffset = carouselOffset;
+                    const visibleEnd = currentOffset + visibleTabsCount - 1;
+                    
+                    if (areaIndex < currentOffset || areaIndex > visibleEnd) {
+                      // Center the new area in the visible range if possible
+                      const newOffset = Math.max(0, Math.min(
+                        areaIndex - Math.floor(visibleTabsCount / 2),
+                        freshAreas.length - visibleTabsCount
+                      ));
+                      setCarouselOffset(newOffset);
+                    }
+                  }
+                  
+                  console.log(`Successfully auto-selected area: ${newArea.name}`);
+                } else {
+                  console.warn(`Could not find newly created area with ID: ${responseData.area_id}`);
+                }
+              }
             } else if (type === 'project') {
               await loadProjectsForArea(selectedArea.id);
             } else if (type === 'task') {
@@ -3189,6 +3294,49 @@
         }
       };
 
+      const showDeleteProjectDialog = async (project) => {
+        try {
+          // Get deletion information first
+          const response = await fetch(`http://127.0.0.1:8787/api/projects/${project.id}/deletion-info`);
+          const deletionInfo = await response.json();
+          
+          if (!deletionInfo.success) {
+            console.error('Failed to get deletion info:', deletionInfo.error);
+            return;
+          }
+          
+          let message = `Are you sure you want to permanently delete "${project.name}"?`;
+          
+          if (deletionInfo.total_task_count > 0) {
+            message += `\n\n⚠️ WARNING: This will permanently delete:`;
+            if (deletionInfo.task_count > 0) {
+              message += `\n• ${deletionInfo.task_count} task${deletionInfo.task_count > 1 ? 's' : ''}`;
+            }
+            if (deletionInfo.subtask_count > 0) {
+              message += `\n• ${deletionInfo.subtask_count} subtask${deletionInfo.subtask_count > 1 ? 's' : ''}`;
+            }
+            message += `\n\nTotal: ${deletionInfo.total_task_count} item${deletionInfo.total_task_count > 1 ? 's' : ''} will be permanently deleted.`;
+          }
+          
+          message += `\n\nThis action cannot be undone.`;
+          
+          showConfirmationDialog({
+            type: 'danger',
+            title: 'Delete Project Permanently',
+            message: message,
+            confirmText: 'Delete Permanently',
+            cancelText: 'Cancel',
+            onConfirm: () => {
+              deleteProject(project.id);
+              hideConfirmationDialog();
+            },
+            onCancel: hideConfirmationDialog
+          });
+        } catch (error) {
+          console.error('Error getting deletion info:', error);
+        }
+      };
+
       const deleteProject = async (projectId) => {
         try {
           const response = await fetch(`http://127.0.0.1:8787/api/projects/${projectId}`, {
@@ -3304,18 +3452,7 @@
                 return [
                   { label: 'Restore Project', action: () => restoreProject(project.id) },
                   { label: 'separator' },
-                  { label: 'Delete Permanently', action: () => showConfirmationDialog({
-                    type: 'danger',
-                    title: 'Delete Project Permanently',
-                    message: `Are you sure you want to permanently delete "${project.name}"? This action cannot be undone.`,
-                    confirmText: 'Delete Permanently',
-                    cancelText: 'Cancel',
-                    onConfirm: () => {
-                      deleteProject(project.id);
-                      hideConfirmationDialog();
-                    },
-                    onCancel: hideConfirmationDialog
-                  }), destructive: true }
+                  { label: 'Delete Permanently', action: () => showDeleteProjectDialog(project), destructive: true }
                 ];
               } else {
                 const items = [
@@ -3364,8 +3501,14 @@
                   }), destructive: true }
                 ];
               } else {
+                const isProjectArchived = selectedProject?.status === 'archived';
                 return [
-                  { label: 'Edit Task', action: () => startEditingItem('task', task.id) },
+                  { 
+                    label: 'Edit Task', 
+                    action: () => startEditingItem('task', task.id),
+                    disabled: isProjectArchived,
+                    tooltip: isProjectArchived ? 'Cannot edit tasks in archived projects' : undefined
+                  },
                   { label: 'separator' },
                   { label: 'Archive Task', action: () => showConfirmationDialog({
                     type: 'warning',
@@ -3426,11 +3569,13 @@
           
           return React.createElement('button', {
             key: item.label,
-            className: `context-menu-item ${item.destructive ? 'destructive' : ''}`,
-            onClick: () => {
+            className: `context-menu-item ${item.destructive ? 'destructive' : ''} ${item.disabled ? 'disabled' : ''}`,
+            onClick: item.disabled ? null : () => {
               item.action();
               hideContextMenu();
-            }
+            },
+            disabled: item.disabled,
+            title: item.tooltip || undefined
           }, item.label);
         }));
       };
@@ -4327,8 +4472,10 @@
             React.createElement('h3', { key: 'title' }, 'Tasks'),
             React.createElement('button', { 
               key: 'new-task',
-              className: 'btn btn-sm btn-outline',
-              onClick: createNewTask
+              className: `btn btn-sm btn-outline ${selectedProject?.status === 'archived' ? 'disabled' : ''}`,
+              onClick: selectedProject?.status === 'archived' ? null : createNewTask,
+              disabled: selectedProject?.status === 'archived',
+              title: selectedProject?.status === 'archived' ? 'Cannot add tasks to archived projects' : 'Add new task'
             }, '+ Task')
           ]),
           React.createElement('div', { key: 'task-list', className: 'task-list' }, 
@@ -4513,21 +4660,21 @@
                   React.createElement('div', { key: 'content', className: 'task-content' }, [
                     React.createElement('h4', { 
                       key: 'title', 
-                      className: 'task-title editable-field',
-                      onClick: (e) => {
+                      className: `task-title ${selectedProject?.status === 'archived' ? 'non-editable' : 'editable-field'}`,
+                      onClick: selectedProject?.status === 'archived' ? null : (e) => {
                         e.stopPropagation();
                         startEditingItem('task', task.id);
                       },
-                      title: 'Click to edit title'
+                      title: selectedProject?.status === 'archived' ? 'Cannot edit tasks in archived projects' : 'Click to edit title'
                     }, task.title),
                     React.createElement('p', { 
                       key: 'objective', 
-                      className: 'task-objective editable-field',
-                      onClick: (e) => {
+                      className: `task-objective ${selectedProject?.status === 'archived' ? 'non-editable' : 'editable-field'}`,
+                      onClick: selectedProject?.status === 'archived' ? null : (e) => {
                         e.stopPropagation();
                         startEditingItem('task', task.id);
                       },
-                      title: 'Click to edit objective'
+                      title: selectedProject?.status === 'archived' ? 'Cannot edit tasks in archived projects' : 'Click to edit objective'
                     }, task.objective || 'Click to add objective'),
                     React.createElement('div', { 
                       key: 'priority', 
@@ -4661,7 +4808,7 @@
                         readOnly: area.is_system,
                         title: area.is_system ? 'System areas cannot be renamed' : undefined,
                         onFocus: (e) => {
-                          if (isNew && e.target.value === "New Area") {
+                          if (isNew && e.target.value.match(/^New Area( \d+)?$/)) {
                             e.target.select();
                           }
                         },
@@ -4829,7 +4976,7 @@
                               value: project.name,
                               tabIndex: 0,
                               onFocus: (e) => {
-                                if (isNew && e.target.value === "New Project") {
+                                if (isNew && e.target.value.match(/^New Project( \d+)?$/)) {
                                   e.target.select();
                                 }
                               },
