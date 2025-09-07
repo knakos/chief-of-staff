@@ -1051,7 +1051,7 @@ class WSMessageHandler:
                                 if task_data:
                                     logger.info(f"🔄 [TASK_CREATE] Creating task with data: {task_data}")
                                     
-                                    # Get or create default project (Tasks in Work area)
+                                    # Find the best matching project using AI-powered analysis
                                     from sqlalchemy.orm import sessionmaker
                                     from sqlalchemy import create_engine
                                     from models import Task, Project, Area
@@ -1061,48 +1061,94 @@ class WSMessageHandler:
                                     session = Session()
                                     
                                     try:
-                                        # Find default Work area
-                                        work_area = session.query(Area).filter_by(name="Work").first()
-                                        if not work_area:
-                                            logger.error(f"❌ [TASK_CREATE] Could not find Work area")
-                                            success = False
-                                        else:
-                                            # Find or use default Tasks project in Work area
-                                            default_project = session.query(Project).filter_by(
-                                                area_id=work_area.id, 
-                                                is_catch_all=True
-                                            ).first()
+                                        # Get all available areas and projects for matching
+                                        all_areas = session.query(Area).all()
+                                        all_projects = session.query(Project).filter_by(status='active').all()
+                                        
+                                        logger.info(f"🔄 [TASK_CREATE] Found {len(all_areas)} areas and {len(all_projects)} active projects")
+                                        
+                                        # Use AI to find the best matching project
+                                        best_project = await self._find_best_project_for_task(
+                                            email_data, task_data, all_areas, all_projects, session
+                                        )
+                                        
+                                        if best_project:
+                                            # Parse due date
+                                            due_date = None
+                                            if task_data.get('due_date'):
+                                                from datetime import datetime
+                                                try:
+                                                    due_date = datetime.fromisoformat(task_data['due_date'])
+                                                except:
+                                                    logger.warning(f"⚠️ [TASK_CREATE] Could not parse due_date: {task_data.get('due_date')}")
                                             
-                                            if not default_project:
-                                                logger.error(f"❌ [TASK_CREATE] Could not find default Tasks project in Work area")
-                                                success = False
+                                            # Create the task in the AI-selected project
+                                            new_task = Task(
+                                                title=task_data.get('title', 'New task from email'),
+                                                objective=task_data.get('objective', 'Review and respond to email'),
+                                                project_id=best_project.id,
+                                                priority=task_data.get('priority', 3),
+                                                due_date=due_date,
+                                                sponsor_email=task_data.get('sponsor_email', 'system@company.com'),
+                                                owner_email=task_data.get('owner_email', 'user@company.com'),
+                                                status='not_started'
+                                            )
+                                            
+                                            session.add(new_task)
+                                            session.commit()
+                                            
+                                            # Store project and area info for response message
+                                            project_name = best_project.name
+                                            area_name = best_project.area.name
+                                            
+                                            logger.info(f"✅ [TASK_CREATE] Successfully created task: '{new_task.title}' in project '{project_name}', area '{area_name}'")
+                                            success = True
+                                        else:
+                                            # Fallback to default Tasks project if AI matching fails
+                                            logger.warning(f"⚠️ [TASK_CREATE] AI project matching failed, using default Tasks project")
+                                            work_area = session.query(Area).filter_by(name="Work").first()
+                                            if work_area:
+                                                default_project = session.query(Project).filter_by(
+                                                    area_id=work_area.id, 
+                                                    is_catch_all=True
+                                                ).first()
+                                                if default_project:
+                                                    # Parse due date
+                                                    due_date = None
+                                                    if task_data.get('due_date'):
+                                                        from datetime import datetime
+                                                        try:
+                                                            due_date = datetime.fromisoformat(task_data['due_date'])
+                                                        except:
+                                                            logger.warning(f"⚠️ [TASK_CREATE] Could not parse due_date: {task_data.get('due_date')}")
+                                                    
+                                                    # Create task in default project
+                                                    new_task = Task(
+                                                        title=task_data.get('title', 'New task from email'),
+                                                        objective=task_data.get('objective', 'Review and respond to email'),
+                                                        project_id=default_project.id,
+                                                        priority=task_data.get('priority', 3),
+                                                        due_date=due_date,
+                                                        sponsor_email=task_data.get('sponsor_email', 'system@company.com'),
+                                                        owner_email=task_data.get('owner_email', 'user@company.com'),
+                                                        status='not_started'
+                                                    )
+                                                    
+                                                    session.add(new_task)
+                                                    session.commit()
+                                                    
+                                                    # Store info for response message
+                                                    project_name = default_project.name
+                                                    area_name = work_area.name
+                                                    
+                                                    logger.info(f"✅ [TASK_CREATE] Created task in fallback project: '{new_task.title}' in project '{project_name}', area '{area_name}'")
+                                                    success = True
+                                                else:
+                                                    logger.error(f"❌ [TASK_CREATE] Could not find default Tasks project")
+                                                    success = False
                                             else:
-                                                # Parse due date
-                                                due_date = None
-                                                if task_data.get('due_date'):
-                                                    from datetime import datetime
-                                                    try:
-                                                        due_date = datetime.fromisoformat(task_data['due_date'])
-                                                    except:
-                                                        logger.warning(f"⚠️ [TASK_CREATE] Could not parse due_date: {task_data.get('due_date')}")
-                                                
-                                                # Create the task
-                                                new_task = Task(
-                                                    title=task_data.get('title', 'New task from email'),
-                                                    objective=task_data.get('objective', 'Review and respond to email'),
-                                                    project_id=default_project.id,
-                                                    priority=task_data.get('priority', 3),
-                                                    due_date=due_date,
-                                                    sponsor_email=task_data.get('sponsor_email', 'system@company.com'),
-                                                    owner_email=task_data.get('owner_email', 'user@company.com'),
-                                                    status='not_started'
-                                                )
-                                                
-                                                session.add(new_task)
-                                                session.commit()
-                                                
-                                                logger.info(f"✅ [TASK_CREATE] Successfully created task: '{new_task.title}' in project '{default_project.name}'")
-                                                success = True
+                                                logger.error(f"❌ [TASK_CREATE] Could not find Work area")
+                                                success = False
                                                 
                                     except Exception as e:
                                         logger.error(f"❌ [TASK_CREATE] Database error: {e}")
@@ -1127,10 +1173,10 @@ class WSMessageHandler:
                     logger.error(f"❌ [EMAIL_ACTION] Failed to execute action: {e}")
                     success = False
             
-            # Store task title for response message
-            created_task_title = None
+            # Store task info for response message
+            created_task_info = None
             if action_type == 'create_task' and success:
-                # Get the actual task title that was created
+                # Get the actual task info that was created
                 try:
                     from sqlalchemy.orm import sessionmaker
                     from sqlalchemy import create_engine
@@ -1140,14 +1186,18 @@ class WSMessageHandler:
                     Session = sessionmaker(bind=engine)
                     session = Session()
                     
-                    # Get the most recently created task
+                    # Get the most recently created task with project and area info
                     latest_task = session.query(Task).order_by(Task.created_at.desc()).first()
                     if latest_task:
-                        created_task_title = latest_task.title
-                        logger.info(f"📋 [RESPONSE] Using actual task title for response: '{created_task_title}'")
+                        created_task_info = {
+                            'title': latest_task.title,
+                            'project': latest_task.project.name,
+                            'area': latest_task.project.area.name
+                        }
+                        logger.info(f"📋 [RESPONSE] Task info for response: '{created_task_info['title']}' in project '{created_task_info['project']}', area '{created_task_info['area']}'")
                     session.close()
                 except Exception as e:
-                    logger.warning(f"⚠️ [RESPONSE] Could not get task title: {e}")
+                    logger.warning(f"⚠️ [RESPONSE] Could not get task info: {e}")
             
             # Send success/failure message and trigger optimistic UI updates
             if action_type == 'archive':
@@ -1162,8 +1212,13 @@ class WSMessageHandler:
                 else:
                     response_message = "❌ Failed to archive email - please try again"
             elif action_type == 'create_task':
-                task_title = created_task_title or action_data.get('task_title', 'New task from email')
-                response_message = f"✅ Task created: '{task_title}'" if success else f"❌ Failed to create task"
+                if success and created_task_info:
+                    response_message = f"✅ Created task: '{created_task_info['title']}' in Project: {created_task_info['project']}, Area: {created_task_info['area']}"
+                elif success:
+                    task_title = action_data.get('task_title', 'New task from email')
+                    response_message = f"✅ Task created: '{task_title}'"
+                else:
+                    response_message = f"❌ Failed to create task"
             elif action_type == 'flag_category':
                 category = action_data.get('category', 'General')
                 response_message = f"✅ Email flagged as: {category}" if success else f"❌ Failed to flag email"
@@ -1455,6 +1510,100 @@ class WSMessageHandler:
                 "email:fetch_error",
                 {"message": f"Failed to get recent emails: {str(e)}"}
             )
+
+    async def _find_best_project_for_task(self, email_data, task_data, all_areas, all_projects, session):
+        """Use AI to find the best matching project for a task based on email content and context"""
+        try:
+            logger.info(f"🤖 [PROJECT_MATCH] Starting AI project matching for task: '{task_data.get('title', 'Unknown')}'")
+            
+            # Get Claude client for AI analysis
+            claude_client = cos_orchestrator.claude_client
+            
+            # Prepare context for AI
+            email_context = {
+                'subject': email_data.get('subject', ''),
+                'sender': email_data.get('sender_name', ''),
+                'body_preview': email_data.get('body_content', '')[:1000],  # First 1000 chars
+                'task_title': task_data.get('title', ''),
+                'task_objective': task_data.get('objective', '')
+            }
+            
+            # Prepare available projects context
+            projects_context = []
+            for project in all_projects:
+                projects_context.append({
+                    'name': project.name,
+                    'description': project.description or '',
+                    'area': project.area.name,
+                    'status': project.status
+                })
+            
+            # Create AI prompt for project matching
+            prompt = f"""Based on this email and task information, find the best matching project from the available options.
+
+EMAIL CONTEXT:
+- Subject: {email_context['subject']}
+- Sender: {email_context['sender']}
+- Content Preview: {email_context['body_preview']}
+
+TASK TO CREATE:
+- Title: {email_context['task_title']}
+- Objective: {email_context['task_objective']}
+
+AVAILABLE PROJECTS:
+{chr(10).join([f"- {p['name']} ({p['area']}): {p['description']}" for p in projects_context])}
+
+Instructions:
+1. Analyze the email content and task details to understand the topic and domain
+2. Match the content semantically to the most relevant project (don't just look for keywords)
+3. Consider the project descriptions and areas
+4. Return ONLY the exact project name that best matches, or "NO_MATCH" if no good match exists
+
+Examples:
+- Email about "Q4 budget review" → "Budget Planning 2024" project
+- Email about "succession planning update" → "Succession Planning" project  
+- Email about "training session approval" → "Team Training Program" project
+
+Best matching project name:"""
+
+            # Call Claude for project matching
+            try:
+                response = await claude_client.chat(
+                    message=prompt,
+                    session_id="project_matching",
+                    user_id="system"
+                )
+                
+                if response and 'response' in response:
+                    project_name = response['response'].strip()
+                    logger.info(f"🤖 [PROJECT_MATCH] AI suggested project: '{project_name}'")
+                    
+                    # Find the project by name
+                    if project_name != "NO_MATCH":
+                        for project in all_projects:
+                            if project.name.lower() == project_name.lower():
+                                logger.info(f"✅ [PROJECT_MATCH] Found matching project: '{project.name}' in area '{project.area.name}'")
+                                return project
+                        
+                        # Try partial matching if exact match fails
+                        for project in all_projects:
+                            if project_name.lower() in project.name.lower() or project.name.lower() in project_name.lower():
+                                logger.info(f"✅ [PROJECT_MATCH] Found partial match: '{project.name}' in area '{project.area.name}'")
+                                return project
+                    
+                    logger.warning(f"⚠️ [PROJECT_MATCH] AI suggested '{project_name}' but no matching project found")
+                else:
+                    logger.warning(f"⚠️ [PROJECT_MATCH] AI returned no response")
+            
+            except Exception as e:
+                logger.error(f"❌ [PROJECT_MATCH] AI analysis failed: {e}")
+            
+            logger.info(f"⚠️ [PROJECT_MATCH] No suitable project match found, will use fallback")
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ [PROJECT_MATCH] Error in project matching: {e}")
+            return None
 
 
 @app.websocket("/ws")

@@ -269,6 +269,12 @@ This architecture ensures the system is responsive during active use while preve
   - **Enhanced Warnings**: Pre-deletion endpoint (`GET /api/projects/{project_id}/deletion-info`) provides task/subtask counts for user warnings
   - **Safety Measures**: Detailed confirmation dialog shows exact count of items that will be permanently deleted
   - **Database Integrity**: Leverages existing SQLAlchemy cascade relationships for proper cleanup
+- **🚨 EMAIL TASK CREATION FIX (2025-09)**: Critical fix for email-to-task creation functionality:
+  - **Problem**: Backend code was marking task creation as "successful" without actually creating tasks
+  - **Root Cause**: `get_email_details()` method used non-existent `_load_cos_properties()` causing analysis to fail
+  - **Solution**: Task creation now uses `create_email_from_com()` and `email_to_dict()` - same proven approach as working email analysis flow
+  - **Result**: Task creation extracts proper task_data from AI analysis and creates real Task objects in database
+  - **Logging**: Comprehensive `[TASK_CREATE]` and `[EMAIL_ACTION]` logging for debugging future issues
 - **Prompt Management**: All prompts stored as `.md` files in `llm/prompts/` - these define the core AI intelligence behavior
 - **Multi-Agent Coordination**: COS Orchestrator routes commands, specialized agents handle domain-specific tasks
 - **Interview Limits**: Context interviews limited to ≤1 per day to avoid user fatigue
@@ -453,6 +459,15 @@ const [projectsLoading, setProjectsLoading] = useState(false);
 2. **CSP Violations**: Ensure `connect-src 'self' http://127.0.0.1:8787` in Content Security Policy
 3. **Schema Mismatches**: Run database migrations when Task model fields are added
 4. **Font Size Issues**: Check for duplicate CSS definitions in style blocks
+5. **Task Creation Failures**: Check for `[TASK_CREATE]` and `[EMAIL_ACTION]` logs in backend. Common issues:
+   - Missing email analysis data (check email schema loading)
+   - Database connection failures (check virtual environment activation)
+   - Missing task_data in email analysis (verify AI analysis includes task_data field)
+6. **Email Analysis Loading**: Use `create_email_from_com()` + `email_to_dict()` pattern, not direct COM property access
+7. **Outlook Integration Failures**: 
+   - Ensure Windows Outlook is running with account logged in
+   - Check COM connection logs for `✅ Connected to Outlook via COM`
+   - Use ONLY `_get_messages_legacy()` methods, no batch/optimized loaders
 
 ## Key Implementation Priorities
 
