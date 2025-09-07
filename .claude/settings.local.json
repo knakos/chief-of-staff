@@ -51,7 +51,8 @@
       "Read(//**)",
       "Bash(del cos.db)",
       "Read(///**)",
-      "Bash(cmd.exe:*)"
+      "Bash(cmd.exe:*)",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []

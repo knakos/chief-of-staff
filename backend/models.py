@@ -3,7 +3,7 @@ Database models for Chief of Staff application.
 Core entities: Projects, Tasks, Context, Jobs
 Note: Emails are accessed directly from Outlook COM integration, not stored in database
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from sqlalchemy import Column, String, DateTime, Date, Time, Text, Integer, Float, Boolean, ForeignKey, JSON, Index
 from sqlalchemy.ext.declarative import declarative_base
@@ -16,6 +16,10 @@ Base = declarative_base()
 def new_id() -> str:
     return str(uuid.uuid4())
 
+def utc_now() -> datetime:
+    """Return current UTC time in timezone-aware format"""
+    return datetime.now(timezone.utc)
+
 class Area(Base):
     __tablename__ = "areas"
     
@@ -27,8 +31,8 @@ class Area(Base):
     is_system = Column(Boolean, default=False)  # System areas cannot be deleted
     sort_order = Column(Integer, default=0, index=True)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
     
     # Relationships
     projects = relationship("Project", back_populates="area", cascade="all, delete-orphan")
@@ -54,8 +58,8 @@ class Project(Base):
     sort_order = Column(Integer, default=0, index=True)
     color = Column(String)  # Hex color, defaults to area color if not set
     
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
     
     # Foreign keys
     area_id = Column(String, ForeignKey("areas.id"), nullable=False, index=True)
@@ -84,9 +88,9 @@ class Task(Base):
     due_date = Column(DateTime)
     sponsor_email = Column(String)  # Who wants this task, who will be updated when complete
     owner_email = Column(String)    # Who is responsible for completing this task
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
     completed_at = Column(DateTime)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
     
     # Foreign keys
     project_id = Column(String, ForeignKey("projects.id"), nullable=False, index=True)
@@ -121,7 +125,7 @@ class ContextEntry(Base):
     content = Column(Text, nullable=False)
     source = Column(String)  # interview, email_scan, user_input, etc.
     confidence = Column(Float, default=1.0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
     expires_at = Column(DateTime)  # For time-sensitive context
     
     # Relationships
@@ -138,7 +142,7 @@ class Job(Base):
     type = Column(String, nullable=False)  # email_scan, context_scan, digest_build, etc.
     status = Column(String, default="pending")  # pending, running, completed, failed
     priority = Column(Integer, default=3)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
     started_at = Column(DateTime)
     completed_at = Column(DateTime)
     
@@ -165,7 +169,7 @@ class Interview(Base):
     status = Column(String, default="pending", index=True)  # pending, active, completed, dismissed
     question = Column(Text, nullable=False)
     answer = Column(Text)
-    asked_at = Column(DateTime, default=datetime.utcnow)
+    asked_at = Column(DateTime, default=utc_now)
     answered_at = Column(DateTime)
     dismissed_at = Column(DateTime)
     
@@ -185,7 +189,7 @@ class Digest(Base):
     type = Column(String, nullable=False)  # daily, weekly, project_summary
     title = Column(String, nullable=False)
     content = Column(Text, nullable=False)  # Markdown content
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
     
     # Time period covered
     period_start = Column(DateTime)
@@ -235,8 +239,8 @@ class UserProfile(Base):
     success_metrics = Column(SQLiteJSON)  # How success is measured
     
     # Metadata
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
     onboarding_completed = Column(Boolean, default=False)
     
     __table_args__ = (
@@ -281,8 +285,8 @@ class Contact(Base):
     notes = Column(Text)                     # Free-form notes about this contact
     
     # Metadata
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
     source = Column(String)  # outlook, manual, import
     
     # Relationships
@@ -316,7 +320,7 @@ class UserContext(Base):
     reinforcement_count = Column(Integer, default=1)
     
     # Temporal Context
-    valid_from = Column(DateTime, default=datetime.utcnow)
+    valid_from = Column(DateTime, default=utc_now)
     valid_until = Column(DateTime)           # For time-sensitive context
     seasonal_pattern = Column(String)        # daily, weekly, monthly, quarterly patterns
     
@@ -329,8 +333,8 @@ class UserContext(Base):
     related_contact_id = Column(String, ForeignKey("contacts.id"))
     
     # Metadata
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
     
     __table_args__ = (
         Index('idx_user_context_type', 'context_type'),
@@ -371,8 +375,8 @@ class DecisionHistory(Base):
     # Metadata
     decision_date = Column(DateTime, nullable=False, index=True)
     outcome_date = Column(DateTime)          # When outcome was evaluated
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
     
     __table_args__ = (
         Index('idx_decision_type', 'decision_type'),

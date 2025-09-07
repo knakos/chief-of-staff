@@ -5,7 +5,7 @@ Handles WebSocket communication and provides REST API endpoints.
 import asyncio
 import json
 import logging
-from datetime import datetime
+from utils.datetime_utils import utc_now, utc_timestamp
 from typing import Dict, Any, List, Optional
 from contextlib import asynccontextmanager
 
@@ -138,8 +138,8 @@ class ConnectionManager:
         connection_id = str(id(websocket))
         self.active_connections[connection_id] = websocket
         self.connection_metadata[connection_id] = {
-            "connected_at": datetime.utcnow(),
-            "last_ping": datetime.utcnow()
+            "connected_at": utc_now(),
+            "last_ping": utc_now()
         }
         logger.info(f"WebSocket connected: {connection_id}. Total: {len(self.active_connections)}")
         return connection_id
@@ -266,6 +266,8 @@ class WSMessageHandler:
             "task:update": self.handle_task_update,
             "email:analyze": self.handle_email_analyze,
             "email:get_recent": self.handle_get_recent_emails,
+            "email:selected": self.handle_email_selected,
+            "email_recommendation_action": self.handle_email_recommendation_action,
             "status:request": self.handle_status_request,
         }
         
@@ -298,18 +300,37 @@ class WSMessageHandler:
         # Process with COS orchestrator
         response = await cos_orchestrator.process_user_input(text, self.db)
         
+        # Handle both string and dict responses for backward compatibility
+        if isinstance(response, dict):
+            text_content = response.get("text", str(response))
+            actions = response.get("actions", [])
+        else:
+            text_content = str(response)
+            actions = []
+        
         # Send agent response
         await manager.send_to_client(
             self.websocket,
             "thread:append",
             {
                 "message": {
-                    "id": str(datetime.utcnow().timestamp()),
+                    "id": str(utc_now().timestamp()),
                     "role": "agent",
-                    "content": response
+                    "content": text_content
                 }
             }
         )
+        
+        # Send navigation actions if present
+        for action in actions:
+            if action.get("type") == "navigate":
+                await manager.send_to_client(
+                    self.websocket,
+                    "navigate",
+                    {
+                        "target": action.get("target")
+                    }
+                )
 
     async def handle_email_action(self, data: Dict[str, Any]):
         """Handle email action application"""
@@ -353,9 +374,120 @@ class WSMessageHandler:
                 # This would require implementing mark_read in COM service
                 result = {"success": True, "message": "Action noted (implementation pending)"}
             
-            elif action == "extract_tasks":
-                # Extract tasks would require analyzing the email first
-                result = {"success": False, "message": "Task extraction not implemented yet"}
+            elif action_type == "create_task":
+                # Create task from suggestion
+                try:
+                    # First try to get task_data from request (if frontend provides it)
+                    task_data = data.get("task_data", {})
+                    
+                    # If no task_data provided, extract it from the email's analysis
+                    if not task_data:
+                        logger.info(f"🔄 [EMAIL_ACTION] No task_data provided, retrieving from email analysis...")
+                        
+                        # Get email details to extract task data from analysis
+                        com_service = cos_orchestrator.email_triage.com_service
+                        logger.info(f"🔍 [EMAIL_ACTION] COM service available: {com_service is not None}")
+                        logger.info(f"🔍 [EMAIL_ACTION] COM service connected: {com_service.is_connected() if com_service else False}")
+                        
+                        if com_service and com_service.is_connected():
+                            logger.info(f"🔄 [EMAIL_ACTION] Calling get_email_details for: {email_id}")
+                            email_details = com_service.get_email_details(email_id)
+                            logger.info(f"🔍 [EMAIL_ACTION] Email details returned: {email_details is not None}")
+                            
+                            if email_details:
+                                logger.info(f"🔍 [EMAIL_ACTION] Email details keys: {list(email_details.keys())}")
+                                has_analysis = 'analysis' in email_details
+                                logger.info(f"🔍 [EMAIL_ACTION] Has analysis: {has_analysis}")
+                                
+                                if has_analysis:
+                                    analysis = email_details['analysis']
+                                    logger.info(f"🔍 [EMAIL_ACTION] Analysis type: {type(analysis)}")
+                                    logger.info(f"🔍 [EMAIL_ACTION] Analysis: {analysis}")
+                                    
+                                    if isinstance(analysis, dict):
+                                        has_suggested_actions = 'suggested_actions' in analysis
+                                        logger.info(f"🔍 [EMAIL_ACTION] Has suggested_actions: {has_suggested_actions}")
+                                        
+                                        if has_suggested_actions:
+                                            suggested_actions = analysis['suggested_actions']
+                                            logger.info(f"🔍 [EMAIL_ACTION] Suggested actions count: {len(suggested_actions) if suggested_actions else 0}")
+                                            logger.info(f"🔍 [EMAIL_ACTION] Suggested actions: {suggested_actions}")
+                                            
+                                            # Look for create_task action with embedded task_data
+                                            for i, suggested_action in enumerate(suggested_actions):
+                                                logger.info(f"🔍 [EMAIL_ACTION] Action {i}: type={suggested_action.get('type')}, has_task_data={'task_data' in suggested_action}")
+                                                if suggested_action.get('type') == 'create_task' and 'task_data' in suggested_action:
+                                                    task_data = suggested_action['task_data']
+                                                    logger.info(f"✅ [EMAIL_ACTION] Found task_data in email analysis: {task_data}")
+                                                    break
+                                        else:
+                                            logger.warning(f"⚠️ [EMAIL_ACTION] No suggested_actions in analysis")
+                                    else:
+                                        logger.warning(f"⚠️ [EMAIL_ACTION] Analysis is not a dict: {analysis}")
+                                else:
+                                    logger.warning(f"⚠️ [EMAIL_ACTION] No analysis in email details")
+                            else:
+                                logger.warning(f"⚠️ [EMAIL_ACTION] get_email_details returned None")
+                        else:
+                            logger.warning(f"⚠️ [EMAIL_ACTION] COM service not available or not connected")
+                    
+                    if not task_data:
+                        logger.warning(f"⚠️ [EMAIL_ACTION] No task data available for email: {email_id}")
+                        result = {"success": False, "message": "No task data available - please analyze the email first"}
+                    else:
+                        from models import Task, new_id, utc_now
+                        from datetime import datetime
+                        
+                        # Create new task in database
+                        new_task_id = new_id()
+                        logger.info(f"🔄 [TASK_CREATE] Creating task with ID: {new_task_id}")
+                        logger.info(f"🔄 [TASK_CREATE] Title: {task_data.get('title', 'Untitled Task')}")
+                        logger.info(f"🔄 [TASK_CREATE] Project ID: {task_data.get('project_id')}")
+                        logger.info(f"🔄 [TASK_CREATE] Objective: {task_data.get('objective', '')}")
+                        logger.info(f"🔄 [TASK_CREATE] Priority: {task_data.get('priority', 3)}")
+                        logger.info(f"🔄 [TASK_CREATE] Sponsor: {task_data.get('sponsor_email', '')}")
+                        logger.info(f"🔄 [TASK_CREATE] Owner: {task_data.get('owner_email', '')}")
+                        
+                        new_task = Task(
+                            id=new_task_id,
+                            title=task_data.get('title', 'Untitled Task'),
+                            objective=task_data.get('objective', ''),
+                            status='not_started',
+                            priority=task_data.get('priority', 3),
+                            sponsor_email=task_data.get('sponsor_email', ''),
+                            owner_email=task_data.get('owner_email', ''),
+                            project_id=task_data.get('project_id'),
+                            created_at=utc_now()
+                        )
+                        
+                        # Parse due_date if provided
+                        if task_data.get('due_date'):
+                            try:
+                                new_task.due_date = datetime.fromisoformat(task_data['due_date'].replace('Z', '+00:00'))
+                            except (ValueError, AttributeError):
+                                logger.warning(f"⚠️ Invalid due date format: {task_data['due_date']}")
+                        
+                        logger.info(f"🔄 [TASK_CREATE] Adding task to database session...")
+                        self.db.add(new_task)
+                        
+                        logger.info(f"🔄 [TASK_CREATE] Committing transaction...")
+                        self.db.commit()
+                        
+                        logger.info(f"✅ [TASK_CREATE] SUCCESSFULLY created task in database!")
+                        logger.info(f"✅ [TASK_CREATE] - Task ID: {new_task.id}")
+                        logger.info(f"✅ [TASK_CREATE] - Title: {new_task.title}")
+                        logger.info(f"✅ [TASK_CREATE] - Project ID: {new_task.project_id}")
+                        logger.info(f"✅ [TASK_CREATE] - Status: {new_task.status}")
+                        logger.info(f"✅ [TASK_CREATE] - Created at: {new_task.created_at}")
+                        result = {
+                            "success": True, 
+                            "message": f"Task created: {new_task.title}",
+                            "task_id": new_task.id
+                        }
+                except Exception as e:
+                    logger.error(f"[ERROR] Task creation failed: {e}")
+                    self.db.rollback()
+                    result = {"success": False, "message": f"Task creation failed: {str(e)}"}
             
             # Send result back
             await manager.send_to_client(
@@ -386,7 +518,7 @@ class WSMessageHandler:
         
         # Record answer
         interview.answer = answer
-        interview.answered_at = datetime.utcnow()
+        interview.answered_at = utc_now()
         interview.status = "completed"
         self.db.commit()
         
@@ -405,7 +537,7 @@ class WSMessageHandler:
             return
         
         interview.status = "dismissed"
-        interview.dismissed_at = datetime.utcnow()
+        interview.dismissed_at = utc_now()
         self.db.commit()
 
     async def handle_project_create(self, data: Dict[str, Any]):
@@ -646,7 +778,7 @@ class WSMessageHandler:
 
             # Set completed_at if status changed to completed
             if updates.get("status") == "completed" and task.completed_at is None:
-                task.completed_at = datetime.utcnow()
+                task.completed_at = utc_now()
             elif updates.get("status") != "completed":
                 task.completed_at = None
 
@@ -719,7 +851,7 @@ class WSMessageHandler:
             try:
                 # Add 60 second timeout to prevent infinite hangs
                 analyzed_email = await asyncio.wait_for(
-                    com_service.analyze_single_email(email_id), 
+                    com_service.analyze_single_email(email_id, db=self.db), 
                     timeout=60.0
                 )
                 logger.info(f"✅ [WEBSOCKET] analyze_single_email returned: {type(analyzed_email)} with keys: {list(analyzed_email.keys()) if analyzed_email else 'None'}")
@@ -757,6 +889,9 @@ class WSMessageHandler:
                     }
                 )
                 logger.info(f"✅ [WEBSOCKET] Successfully sent email:analyzed event")
+                
+                # Send structured recommendations to COS chat
+                await self._send_email_recommendations_to_chat(email_id, analysis, analyzed_email)
             else:
                 logger.warning(f"⚠️ [WEBSOCKET] Analysis failed or returned empty results for email: {email_id}")
                 await manager.send_to_client(
@@ -774,6 +909,391 @@ class WSMessageHandler:
                 "email:analysis_error",
                 {"message": f"Analysis failed: {str(e)}", "email_id": data.get("email_id")}
             )
+    
+    async def _send_email_recommendations_to_chat(self, email_id: str, analysis: Dict[str, Any], email_data: Dict[str, Any]):
+        """Send structured email recommendations to COS chat as clickable links"""
+        try:
+            import time
+            suggested_actions = analysis.get('suggested_actions', [])
+            email_subject = email_data.get('subject', 'Email')[:50]
+            
+            if not suggested_actions:
+                logger.info(f"🔍 [RECOMMENDATIONS] No structured actions found for email: {email_id}")
+                return
+            
+            # Create natural executive assistant message with clickable actions
+            recommendations_text = ""
+            
+            for i, action in enumerate(suggested_actions, 1):
+                if isinstance(action, dict):
+                    action_text = action.get('action', '')
+                    description = action.get('description', '')
+                    action_type = action.get('type', '')
+                    confidence = action.get('confidence', 0.0)
+                    
+                    if action_text:
+                        # Make action text a highlighted link with confidence
+                        recommendations_text += f"**[{action_text}]** "
+                        if description:
+                            recommendations_text += f"{description} "
+                        # Add confidence level
+                        confidence_percent = int(confidence * 100)
+                        recommendations_text += f"(Confidence: {confidence_percent}%)"
+                        recommendations_text += "\n\n"
+                else:
+                    # Fallback for simple string actions
+                    recommendations_text += f"**[I recommend: {action}]** (Confidence: 50%)\n\n"
+            
+            if recommendations_text:
+                recommendations_text += "Click any action above to proceed, or let me know if you'd like different options."
+            
+            # Send as COS message to chat
+            message_data = {
+                "id": f"recommendations_{email_id}_{int(time.time())}",
+                "text": recommendations_text,
+                "timestamp": utc_timestamp(),
+                "role": "agent",
+                "sender": "cos",
+                "type": "recommendations",
+                "email_id": email_id,
+                "actions": suggested_actions
+            }
+            
+            logger.info(f"📨 [RECOMMENDATIONS] Sending recommendations to chat for email: {email_id}")
+            await manager.send_to_client(
+                self.websocket,
+                "thread:append",
+                {"message": message_data}
+            )
+            
+        except Exception as e:
+            logger.error(f"❌ [RECOMMENDATIONS] Error sending recommendations to chat: {e}")
+            import traceback
+            logger.error(f"❌ [RECOMMENDATIONS] Traceback: {traceback.format_exc()}")
+
+    async def handle_email_recommendation_action(self, data: Dict[str, Any]):
+        """Handle execution of email recommendation actions"""
+        try:
+            import time
+            action_type = data.get('action_type', '')
+            action_data = data.get('action_data', {})
+            email_id = data.get('email_id')
+            
+            logger.info(f"🔄 [EMAIL_ACTION] STARTING recommendation action")
+            logger.info(f"🔄 [EMAIL_ACTION] - Action: {action_type}")
+            logger.info(f"🔄 [EMAIL_ACTION] - Email ID: {email_id}")
+            logger.info(f"🔄 [EMAIL_ACTION] - Action Data: {action_data}")
+            logger.info(f"🔄 [EMAIL_ACTION] - Full Request: {data}")
+            
+            # Save user selection to Outlook for training and execute action
+            success = False
+            if email_id:
+                try:
+                    # Get COM service from global orchestrator
+                    global cos_orchestrator
+                    com_service = cos_orchestrator.email_triage.com_service
+                    
+                    # Ensure COM connection
+                    if not com_service.is_connected():
+                        connection_result = com_service.connect()
+                        if not connection_result.get('connected'):
+                            logger.error(f"❌ [EMAIL_ACTION] Cannot connect to Outlook: {connection_result.get('message')}")
+                            raise Exception("Outlook connection failed")
+                    
+                    # Find email in Outlook by ID
+                    outlook_item = com_service.com_connector._get_item_by_id(email_id)
+                    if outlook_item:
+                        # Save user selection for training
+                        from integrations.outlook.property_sync import save_selected_action_to_outlook
+                        save_selected_action_to_outlook(outlook_item, action_type, action_data)
+                        logger.info(f"📊 [TRAINING] Recorded user selection: {action_type} for email: {email_id}")
+                        
+                        # Execute the actual action
+                        if action_type == 'archive':
+                            # Ensure COS_Archive folder exists
+                            folder_result = com_service.create_folder('COS_Archive', 'Inbox')  # Won't create if exists
+                            logger.info(f"📂 [EMAIL_ACTION] COS_Archive folder check result: {folder_result}")
+                            
+                            # Move email to COS_Archive folder
+                            result = com_service.move_email(email_id, 'COS_Archive')
+                            if result:
+                                success = True
+                                logger.info(f"✅ [EMAIL_ACTION] Successfully archived email: {email_id}")
+                            else:
+                                logger.error(f"❌ [EMAIL_ACTION] Failed to archive email: {email_id}")
+                        elif action_type == 'create_task':
+                            # Get email details and analysis using proper COM schema approach
+                            logger.info(f"🔄 [TASK_CREATE] Getting email details for task creation: {email_id}")
+                            
+                            # Use same approach as the working email analysis flow
+                            try:
+                                from schemas.email_schema import create_email_from_com, email_to_dict
+                                email_schema = create_email_from_com(outlook_item, skip_analysis=True)
+                                email_data = email_to_dict(email_schema)
+                                logger.info(f"🔄 [TASK_CREATE] Retrieved email data using schema: {email_data.get('subject', 'Unknown')[:50]}")
+                            except Exception as e:
+                                logger.error(f"❌ [TASK_CREATE] Failed to load email via schema: {e}")
+                                email_data = None
+                            
+                            if email_data and email_data.get('analysis'):
+                                analysis = email_data['analysis']
+                                logger.info(f"🔄 [TASK_CREATE] Found email analysis: {analysis}")
+                                
+                                # Look for create_task action in suggested_actions
+                                task_data = None
+                                if 'suggested_actions' in analysis:
+                                    for action in analysis['suggested_actions']:
+                                        if action.get('type') == 'create_task' and 'task_data' in action:
+                                            task_data = action['task_data']
+                                            logger.info(f"🔄 [TASK_CREATE] Found task_data in email analysis: {task_data}")
+                                            break
+                                
+                                if task_data:
+                                    logger.info(f"🔄 [TASK_CREATE] Creating task with data: {task_data}")
+                                    
+                                    # Get or create default project (Tasks in Work area)
+                                    from sqlalchemy.orm import sessionmaker
+                                    from sqlalchemy import create_engine
+                                    from models import Task, Project, Area
+                                    
+                                    engine = create_engine('sqlite:///cos.db', echo=False)
+                                    Session = sessionmaker(bind=engine)
+                                    session = Session()
+                                    
+                                    try:
+                                        # Find default Work area
+                                        work_area = session.query(Area).filter_by(name="Work").first()
+                                        if not work_area:
+                                            logger.error(f"❌ [TASK_CREATE] Could not find Work area")
+                                            success = False
+                                        else:
+                                            # Find or use default Tasks project in Work area
+                                            default_project = session.query(Project).filter_by(
+                                                area_id=work_area.id, 
+                                                is_catch_all=True
+                                            ).first()
+                                            
+                                            if not default_project:
+                                                logger.error(f"❌ [TASK_CREATE] Could not find default Tasks project in Work area")
+                                                success = False
+                                            else:
+                                                # Parse due date
+                                                due_date = None
+                                                if task_data.get('due_date'):
+                                                    from datetime import datetime
+                                                    try:
+                                                        due_date = datetime.fromisoformat(task_data['due_date'])
+                                                    except:
+                                                        logger.warning(f"⚠️ [TASK_CREATE] Could not parse due_date: {task_data.get('due_date')}")
+                                                
+                                                # Create the task
+                                                new_task = Task(
+                                                    title=task_data.get('title', 'New task from email'),
+                                                    objective=task_data.get('objective', 'Review and respond to email'),
+                                                    project_id=default_project.id,
+                                                    priority=task_data.get('priority', 3),
+                                                    due_date=due_date,
+                                                    sponsor_email=task_data.get('sponsor_email', 'system@company.com'),
+                                                    owner_email=task_data.get('owner_email', 'user@company.com'),
+                                                    status='not_started'
+                                                )
+                                                
+                                                session.add(new_task)
+                                                session.commit()
+                                                
+                                                logger.info(f"✅ [TASK_CREATE] Successfully created task: '{new_task.title}' in project '{default_project.name}'")
+                                                success = True
+                                                
+                                    except Exception as e:
+                                        logger.error(f"❌ [TASK_CREATE] Database error: {e}")
+                                        session.rollback()
+                                        success = False
+                                    finally:
+                                        session.close()
+                                else:
+                                    logger.warning(f"⚠️ [TASK_CREATE] No task_data found in email analysis")
+                                    success = False
+                            else:
+                                logger.warning(f"⚠️ [TASK_CREATE] No email analysis data found")
+                                success = False
+                        elif action_type in ['flag_category', 'save_later', 'save_reference']:
+                            # For other actions, just mark as successful for now (implement later)
+                            success = True
+                        
+                    else:
+                        logger.warning(f"⚠️ [EMAIL_ACTION] Could not find email in Outlook for ID: {email_id}")
+                        
+                except Exception as e:
+                    logger.error(f"❌ [EMAIL_ACTION] Failed to execute action: {e}")
+                    success = False
+            
+            # Store task title for response message
+            created_task_title = None
+            if action_type == 'create_task' and success:
+                # Get the actual task title that was created
+                try:
+                    from sqlalchemy.orm import sessionmaker
+                    from sqlalchemy import create_engine
+                    from models import Task
+                    
+                    engine = create_engine('sqlite:///cos.db', echo=False)
+                    Session = sessionmaker(bind=engine)
+                    session = Session()
+                    
+                    # Get the most recently created task
+                    latest_task = session.query(Task).order_by(Task.created_at.desc()).first()
+                    if latest_task:
+                        created_task_title = latest_task.title
+                        logger.info(f"📋 [RESPONSE] Using actual task title for response: '{created_task_title}'")
+                    session.close()
+                except Exception as e:
+                    logger.warning(f"⚠️ [RESPONSE] Could not get task title: {e}")
+            
+            # Send success/failure message and trigger optimistic UI updates
+            if action_type == 'archive':
+                if success:
+                    response_message = "📂 Email moved to COS_Archive folder successfully"
+                    # Signal frontend to remove email from list
+                    await manager.send_to_client(
+                        self.websocket,
+                        "email:archived",
+                        {"email_id": email_id, "success": True}
+                    )
+                else:
+                    response_message = "❌ Failed to archive email - please try again"
+            elif action_type == 'create_task':
+                task_title = created_task_title or action_data.get('task_title', 'New task from email')
+                response_message = f"✅ Task created: '{task_title}'" if success else f"❌ Failed to create task"
+            elif action_type == 'flag_category':
+                category = action_data.get('category', 'General')
+                response_message = f"✅ Email flagged as: {category}" if success else f"❌ Failed to flag email"
+            elif action_type == 'save_later':
+                response_message = "✅ Email saved for later reading" if success else "❌ Failed to save for later"
+            elif action_type == 'save_reference':
+                response_message = "✅ Email saved as reference material" if success else "❌ Failed to save as reference"
+            else:
+                response_message = f"✅ Action '{action_type}' executed" if success else f"❌ Action '{action_type}' failed"
+            
+            # Send confirmation banner to COS chat
+            message_data = {
+                "id": f"recommendation_result_{int(time.time() * 1000)}",
+                "text": response_message,
+                "timestamp": utc_timestamp(),
+                "sender": "system",
+                "isStatus": True,
+                "success": success,
+                "action_type": action_type,
+                "email_id": email_id
+            }
+            
+            await manager.send_to_client(
+                self.websocket,
+                "thread:append", 
+                {"message": message_data}
+            )
+            
+            logger.info(f"✅ [EMAIL_ACTION] Action '{action_type}' completed successfully")
+            
+        except Exception as e:
+            logger.error(f"❌ [EMAIL_ACTION] Error executing recommendation action: {e}")
+            import traceback
+            logger.error(f"❌ [EMAIL_ACTION] Traceback: {traceback.format_exc()}")
+            
+            # Send error message to chat
+            error_message = {
+                "id": f"recommendation_error_{int(time.time() * 1000)}",
+                "text": f"❌ Failed to execute action: {str(e)}",
+                "timestamp": utc_timestamp(),
+                "sender": "system",
+                "isStatus": True
+            }
+            
+            await manager.send_to_client(
+                self.websocket,
+                "thread:append",
+                {"message": error_message}
+            )
+
+    async def handle_email_selected(self, data: Dict[str, Any]):
+        """Handle when user selects an email - check for existing recommendations"""
+        try:
+            import time
+            email_id = data.get('email_id')
+            if not email_id:
+                logger.warning("📧 [EMAIL_SELECTED] No email ID provided")
+                return
+                
+            logger.info(f"📧 [EMAIL_SELECTED] User selected email: {email_id}")
+            
+            # Use COM service to get the specific email with existing analysis
+            com_service = cos_orchestrator.email_triage.com_service
+            
+            # Ensure COM connection
+            if not com_service.is_connected():
+                connection_result = com_service.connect()
+                if not connection_result.get('connected'):
+                    logger.error(f"❌ [EMAIL_SELECTED] Cannot get email: {connection_result.get('message')}")
+                    return
+            
+            # Get email data by ID to access existing COS properties
+            outlook_item = com_service.com_connector._get_item_by_id(email_id)
+            if not outlook_item:
+                logger.warning(f"⚠️ [EMAIL_SELECTED] Could not find email with ID: {email_id}")
+                return
+            
+            # Extract email data using schema
+            from schemas.email_schema import create_email_from_com, email_to_dict
+            email_schema = create_email_from_com(outlook_item, skip_analysis=True)  # Don't trigger new analysis
+            email_data = email_to_dict(email_schema)
+            
+            # Check if email has existing analysis with recommendations
+            analysis = email_data.get('analysis', {})
+            if analysis and isinstance(analysis, dict):
+                suggested_actions = analysis.get('suggested_actions', [])
+                if suggested_actions and isinstance(suggested_actions, list) and len(suggested_actions) > 0:
+                    logger.info(f"📧 [EMAIL_SELECTED] Found {len(suggested_actions)} existing recommendations for: {email_data.get('subject', 'Unknown')[:50]}")
+                    
+                    # Send existing recommendations to COS chat
+                    await self._send_email_recommendations_to_chat(email_id, analysis, email_data)
+                else:
+                    logger.info(f"📧 [EMAIL_SELECTED] No existing recommendations found for: {email_data.get('subject', 'Unknown')[:50]}")
+                    
+                    # Send message indicating no recommendations available
+                    message_data = {
+                        "id": f"no_recommendations_{email_id}_{int(time.time() * 1000)}",
+                        "text": f"ℹ️ No recommendations available for this email. Click 'Analyze' to generate recommendations.",
+                        "timestamp": utc_timestamp(),
+                        "sender": "system",
+                        "isStatus": True
+                    }
+                    
+                    await manager.send_to_client(
+                        self.websocket,
+                        "thread:append",
+                        {"message": message_data}
+                    )
+            else:
+                logger.info(f"📧 [EMAIL_SELECTED] No analysis data found for: {email_data.get('subject', 'Unknown')[:50]}")
+                
+                # Send message indicating analysis needed
+                message_data = {
+                    "id": f"needs_analysis_{email_id}_{int(time.time() * 1000)}",
+                    "text": f"ℹ️ This email hasn't been analyzed yet. Click 'Analyze' to generate recommendations.",
+                    "timestamp": utc_timestamp(),
+                    "sender": "system",
+                    "isStatus": True
+                }
+                
+                await manager.send_to_client(
+                    self.websocket,
+                    "thread:append",
+                    {"message": message_data}
+                )
+                
+        except Exception as e:
+            logger.error(f"❌ [EMAIL_SELECTED] Error handling email selection: {e}")
+            import traceback
+            logger.error(f"❌ [EMAIL_SELECTED] Traceback: {traceback.format_exc()}")
 
     async def handle_get_recent_emails(self, data: Dict[str, Any]):
         """Handle request for recent emails with AI analysis"""
@@ -1140,7 +1660,7 @@ async def get_area_projects(area_id: str, db: Session = Depends(get_db)):
         completed_count = db.query(Task).filter_by(project_id=project.id, status="completed").count()
         overdue_count = db.query(Task).filter(
             Task.project_id == project.id,
-            Task.due_date < datetime.utcnow(),
+            Task.due_date < utc_now(),
             Task.status != "completed"
         ).count()
         
@@ -1309,7 +1829,7 @@ async def update_task(task_id: str, task_data: dict, db: Session = Depends(get_d
         
         # Set completed_at when status changes to completed
         if task_data.get("status") == "completed" and not task.completed_at:
-            task.completed_at = datetime.utcnow()
+            task.completed_at = utc_now()
             logger.info(f"Auto-set completed_at: {task.completed_at}")
         elif task_data.get("status") != "completed":
             if task.completed_at:
@@ -1317,7 +1837,7 @@ async def update_task(task_id: str, task_data: dict, db: Session = Depends(get_d
             task.completed_at = None
         
         # Update the updated_at timestamp
-        task.updated_at = datetime.utcnow()
+        task.updated_at = utc_now()
         
         db.commit()
         logger.info(f"Successfully updated task {task_id}")
@@ -1565,7 +2085,7 @@ async def debug_prompts():
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+    return {"status": "healthy", "timestamp": utc_timestamp()}
 
 @app.get("/api/usage/stats")
 async def get_usage_stats():

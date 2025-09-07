@@ -39,7 +39,7 @@ class COSOrchestrator(BaseAgent):
         self.writer = WriterAgent(claude_client)
         self.email_intelligence = EmailIntelligenceService(claude_client)
     
-    async def process_user_input(self, user_input: str, db: Session) -> str:
+    async def process_user_input(self, user_input: str, db: Session) -> Dict[str, Any]:
         """Process user input and coordinate appropriate responses"""
         logger.info(f"COS processing user input: {user_input}")
         
@@ -50,7 +50,7 @@ class COSOrchestrator(BaseAgent):
         # For natural language, analyze intent and respond conversationally
         return await self._handle_conversation(user_input, db)
     
-    async def _handle_command(self, command: str, db: Session) -> str:
+    async def _handle_command(self, command: str, db: Session) -> Dict[str, Any]:
         """Handle slash commands"""
         command_lower = command.lower()
         logger.info(f"_handle_command received: '{command_lower}'")
@@ -68,9 +68,12 @@ class COSOrchestrator(BaseAgent):
         elif "/outlook" in command_lower:
             return await self._handle_outlook_command(command_lower, db)
         else:
-            return f"Unknown command: {command}. Available commands: /plan, /summarize, /triage, /digest, /interview, /outlook"
+            return {
+                "text": f"Unknown command: {command}. Available commands: /plan, /summarize, /triage, /digest, /interview, /outlook",
+                "actions": []
+            }
     
-    async def _handle_conversation(self, user_input: str, db: Session) -> str:
+    async def _handle_conversation(self, user_input: str, db: Session) -> Dict[str, Any]:
         """Handle conversational input with intent detection"""
         # Get current context for the user
         context = await self._build_current_context(db)
@@ -79,89 +82,122 @@ class COSOrchestrator(BaseAgent):
         # Detect intent and potentially execute actions behind the scenes
         intent_actions = []
         
-        # Email/Outlook related intents
-        if any(word in user_lower for word in ["email", "inbox", "outlook", "mail", "triage"]):
-            # Always ensure we're connected when user asks about emails
-            if not self.email_triage.hybrid_service.is_connected():
-                logger.info("User asked about emails but not connected - attempting connection")
-                connect_result = await self.email_triage.hybrid_service.connect()
-                context["outlook_connection"] = connect_result
-                intent_actions.append("outlook_auto_connected")
-                if connect_result.get("connected"):
-                    logger.info("Auto-connection successful - folders should be created")
-            
-            # Check specific email intents and delegate to EmailTriageAgent
-            if any(word in user_lower for word in ["inbox", "messages", "what's in"]):
-                # Delegate to EmailTriageAgent to view inbox
-                inbox_result = await self.email_triage.view_inbox_messages(db, limit=20)
-                context["inbox_messages"] = inbox_result
-                intent_actions.append("inbox_retrieved")
-            elif any(word in user_lower for word in ["connect", "setup", "configure"]):
-                connect_result = await self.email_triage.hybrid_service.connect()
-                context["outlook_connection"] = connect_result
-                intent_actions.append(f"outlook_connect_attempted")
-            elif any(word in user_lower for word in ["recent", "latest", "new", "subjects", "five most recent"]):
-                # User is asking about recent emails - fetch directly from Outlook
-                try:
-                    logger.info("Fetching live recent emails from Outlook for user request")
-                    live_emails = await self.email_triage.hybrid_service.get_messages("Inbox", limit=5)
-                    if live_emails:
-                        context["live_recent_emails"] = []
-                        for i, email in enumerate(live_emails, 1):
-                            context["live_recent_emails"].append({
-                                "number": i,
-                                "subject": email.get("subject", "No Subject"),
-                                "sender": email.get("sender_name", email.get("sender", "Unknown")),
-                                "date": email.get("received_at", email.get("received_date_time", "Unknown"))
-                            })
-                        intent_actions.append("live_emails_fetched")
-                        logger.info(f"Fetched {len(live_emails)} live emails from Outlook")
-                    else:
-                        context["live_recent_emails_error"] = "No emails found in Outlook"
-                        logger.warning("No live emails found in Outlook")
-                except Exception as e:
-                    context["live_recent_emails_error"] = str(e)
-                    logger.error(f"Failed to fetch live emails: {e}")
-                    # Direct fetch failed, provide fallback info
-                    context["outlook_fetch_error"] = str(e)
-            elif any(word in user_lower for word in ["organize", "triage", "sort", "process"]):
-                # Trigger email triage in background
-                await self.job_queue.add_job("email_scan", {})
-                intent_actions.append("email_triage_started")
+        # Only handle explicit connection requests - don't automatically load data
+        if any(word in user_lower for word in ["connect", "setup", "configure"]) and any(word in user_lower for word in ["outlook", "email"]):
+            # Handle explicit Outlook connection requests
+            connect_result = self.email_triage.com_service.connect()
+            context["outlook_connection"] = connect_result
+            intent_actions.append("outlook_connect_attempted")
         
-        # Planning related intents
-        elif any(word in user_lower for word in ["plan", "planning", "organize", "schedule", "prioritize"]):
-            # Add planning context
-            active_projects = db.query(Project).filter(Project.status == "active").all()
-            pending_tasks = db.query(Task).filter(Task.status.in_(["not_started", "active"])).all()
-            context.update({
-                "active_projects_count": len(active_projects),
-                "pending_tasks_count": len(pending_tasks),
-                "request_type": "planning",
-                "user_wants_planning": True
-            })
-            intent_actions.append("planning_context_added")
+        # Only load emails when specifically requested (not just navigation)
+        elif any(phrase in user_lower for phrase in ["show me my emails", "what emails do I have", "recent emails", "latest emails", "my inbox messages"]):
+            # User specifically requested email content - load it
+            try:
+                logger.info("User specifically requested email content - loading from Outlook")
+                live_emails = self.email_triage.com_service.get_recent_emails("Inbox", limit=5)
+                if live_emails:
+                    context["live_recent_emails"] = []
+                    for i, email in enumerate(live_emails, 1):
+                        context["live_recent_emails"].append({
+                            "number": i,
+                            "subject": email.get("subject", "No Subject"),
+                            "sender": email.get("sender_name", email.get("sender", "Unknown")),
+                            "date": email.get("received_at", email.get("received_date_time", "Unknown"))
+                        })
+                    intent_actions.append("live_emails_fetched")
+                    logger.info(f"Fetched {len(live_emails)} live emails from Outlook")
+                else:
+                    context["live_recent_emails_error"] = "No emails found in Outlook"
+                    logger.warning("No live emails found in Outlook")
+            except Exception as e:
+                context["live_recent_emails_error"] = str(e)
+                logger.error(f"Failed to fetch live emails: {e}")
         
-        # Summary related intents  
-        elif any(word in user_lower for word in ["summary", "summarize", "status", "update", "what's happening"]):
-            context["request_type"] = "summary"
-            context["user_wants_summary"] = True
-            intent_actions.append("summary_context_added")
+        # Only trigger background jobs when explicitly requested
+        elif any(word in user_lower for word in ["triage", "organize", "process"]) and any(word in user_lower for word in ["email", "inbox"]):
+            # Explicit request to process/triage emails
+            await self.job_queue.add_job("email_scan", {})
+            intent_actions.append("email_triage_started")
+        
+        # Navigation related intents - use AI to detect navigation intent
+        navigation_result = await self._detect_navigation_intent_ai(user_input, context)
+        if navigation_result.get("wants_navigation") and navigation_result.get("confidence", 0) > 0.7:
+            navigation_target = navigation_result.get("target")
+            context["navigation_action"] = navigation_target
+            intent_actions.append(f"navigate_to_{navigation_target}")
+            logger.info(f"AI detected navigation intent: {navigation_target} (confidence: {navigation_result.get('confidence')})")
         
         # Add detected actions to context
         if intent_actions:
             context["detected_actions"] = intent_actions
         
         # Generate conversational response using COS orchestrator prompt
-        response = await self.claude_client.generate_response(
+        text_response = await self.claude_client.generate_response(
             "system/cos",
             context=context,
             user_input=user_input
         )
         
+        # Create structured response
+        response = {
+            "text": text_response,
+            "actions": []
+        }
+        
+        # Add navigation action if detected
+        if "navigation_action" in context:
+            response["actions"].append({
+                "type": "navigate",
+                "target": context["navigation_action"]
+            })
+        
         return response
     
-    async def _generate_plan(self, db: Session) -> str:
+    async def _detect_navigation_intent_ai(self, user_input: str, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Use AI to detect navigation intent in user input"""
+        try:
+            # Prepare context for navigation analysis
+            nav_context = {
+                "user_input": user_input,
+                "current_context": context.get("request_type", "general"),
+                "available_areas": ["inbox", "emails", "projects", "profile", "contacts"]
+            }
+            
+            # Get AI analysis of navigation intent
+            response = await self.claude_client.generate_response(
+                "tools/navigation",
+                context=nav_context,
+                user_input=user_input
+            )
+            
+            # Parse JSON response
+            import json
+            try:
+                result = json.loads(response.strip())
+                logger.info(f"Navigation AI analysis: {result}")
+                return result
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse navigation response as JSON: {e}")
+                logger.error(f"Raw response: {response}")
+                # Fallback to no navigation
+                return {
+                    "wants_navigation": False,
+                    "target": None,
+                    "confidence": 0.0,
+                    "reasoning": "Failed to parse AI response"
+                }
+                
+        except Exception as e:
+            logger.error(f"Error in AI navigation detection: {e}")
+            # Fallback to no navigation
+            return {
+                "wants_navigation": False,
+                "target": None,
+                "confidence": 0.0,
+                "reasoning": f"Error: {str(e)}"
+            }
+    
+    async def _generate_plan(self, db: Session) -> Dict[str, Any]:
         """Generate a work plan based on current context"""
         context = await self._build_current_context(db)
         
@@ -178,16 +214,18 @@ class COSOrchestrator(BaseAgent):
             "request_type": "planning"
         })
         
-        return await self.claude_client.generate_response("system/cos", context=context, user_input="/plan")
+        text_response = await self.claude_client.generate_response("system/cos", context=context, user_input="/plan")
+        return {"text": text_response, "actions": []}
     
-    async def _generate_summary(self, db: Session) -> str:
+    async def _generate_summary(self, db: Session) -> Dict[str, Any]:
         """Generate a summary of current work status"""
         context = await self._build_current_context(db)
         context["request_type"] = "summary"
         
-        return await self.claude_client.generate_response("system/cos", context=context, user_input="/summarize")
+        text_response = await self.claude_client.generate_response("system/cos", context=context, user_input="/summarize")
+        return {"text": text_response, "actions": []}
     
-    async def _triage_inbox(self, db: Session) -> str:
+    async def _triage_inbox(self, db: Session) -> Dict[str, Any]:
         """Trigger email triage process for both local and Outlook emails"""
         # Add email scan job to queue
         await self.job_queue.add_job("email_scan", {})
@@ -196,48 +234,38 @@ class COSOrchestrator(BaseAgent):
         # Local unprocessed emails no longer stored in database
         local_unprocessed = []  # Placeholder - emails are now accessed directly from Outlook
         
-        # Get Outlook unprocessed emails if authenticated
+        # Get Outlook unprocessed emails if connected
         outlook_unprocessed = []
-        if self.email_triage.auth_manager.is_authenticated():
-            outlook_unprocessed = await self.email_triage.get_unprocessed_outlook_emails()
+        if self.email_triage.com_service.is_connected():
+            outlook_unprocessed = self.email_triage.com_service.get_recent_emails("Inbox", limit=10)
         
         total_unprocessed = len(local_unprocessed) + len(outlook_unprocessed)
         
         if total_unprocessed == 0:
-            return "Inbox is already up to date. No new emails to process."
+            return {"text": "Inbox is already up to date. No new emails to process.", "actions": []}
         
-        # Process local emails
-        processed_count = 0
-        for email in local_unprocessed[:5]:  # Process first 5 local emails
-            if hasattr(email, 'outlook_id') and email.outlook_id:
-                # Use Outlook-enhanced triage for emails with Outlook ID
-                result = await self.email_triage.triage_outlook_email(email, db)
-            else:
-                # Use standard triage for local-only emails
-                result = await self.email_triage.process_email(email, db)
-            processed_count += 1
+        # In COM-only mode, emails are processed directly via Outlook COM interface
+        # No additional processing needed - COM service handles email operations
+        processed_count = len(outlook_unprocessed)
         
-        # Process some Outlook emails
-        for outlook_email in outlook_unprocessed[:3]:  # Process first 3 Outlook emails
-            # Check if email already exists locally
-            # Email database queries removed - emails accessed directly from Outlook
-            existing = None  # Placeholder - no longer stored in database
-            if not existing:
-                # Email creation removed - emails accessed directly from Outlook
-                logger.info(f"Processing Outlook email: {outlook_email.get('subject', 'No subject')}")
-                # Email processing now handled by direct Outlook integration
-                processed_count += 1
+        if processed_count > 0:
+            logger.info(f"Found {processed_count} emails in Outlook inbox - processing handled via COM interface")
         
         context = {
             "processed_count": processed_count,
             "total_unprocessed": total_unprocessed,
-            "outlook_connected": self.email_triage.auth_manager.is_authenticated(),
+            "outlook_connected": self.email_triage.com_service.is_connected(),
             "request_type": "triage"
         }
         
-        return await self.claude_client.generate_response("system/cos", context=context, user_input="/triage")
+        text_response = await self.claude_client.generate_response("system/cos", context=context, user_input="/triage")
+        
+        # Add navigation to emails view for triage
+        actions = [{"type": "navigate", "target": "emails"}]
+        
+        return {"text": text_response, "actions": actions}
     
-    async def _generate_digest(self, db: Session) -> str:
+    async def _generate_digest(self, db: Session) -> Dict[str, Any]:
         """Generate daily/weekly digest"""
         # Add digest build job to queue
         await self.job_queue.add_job("digest_build", {"type": "daily"})
@@ -245,9 +273,10 @@ class COSOrchestrator(BaseAgent):
         context = await self._build_current_context(db)
         context["request_type"] = "digest"
         
-        return await self.claude_client.generate_response("tools/digest", context=context)
+        text_response = await self.claude_client.generate_response("tools/digest", context=context)
+        return {"text": text_response, "actions": []}
     
-    async def _start_interview(self, db: Session) -> str:
+    async def _start_interview(self, db: Session) -> Dict[str, Any]:
         """Start context interview process"""
         # Check if we've already done an interview today
         today = datetime.utcnow().date()
@@ -256,7 +285,7 @@ class COSOrchestrator(BaseAgent):
         ).first()
         
         if recent_interview:
-            return "I've already conducted a context interview today. I'll wait until tomorrow to ask more questions to avoid interrupting your work flow."
+            return {"text": "I've already conducted a context interview today. I'll wait until tomorrow to ask more questions to avoid interrupting your work flow.", "actions": []}
         
         # Generate interview question
         context = await self._build_current_context(db)
@@ -272,9 +301,9 @@ class COSOrchestrator(BaseAgent):
         db.add(interview)
         db.commit()
         
-        return f"Context Interview Question:\n\n{question}\n\n(You can answer this later - it helps me understand your priorities better)"
+        return {"text": f"Context Interview Question:\n\n{question}\n\n(You can answer this later - it helps me understand your priorities better)", "actions": []}
     
-    async def _handle_outlook_command(self, command: str, db: Session) -> str:
+    async def _handle_outlook_command(self, command: str, db: Session) -> Dict[str, Any]:
         """Handle Outlook-specific commands using COM-only service"""
         logger.info(f"_handle_outlook_command called with: {command}")
         
@@ -288,13 +317,21 @@ class COSOrchestrator(BaseAgent):
                     account_info = result.get('account_info', {})
                     primary_account = account_info.get('primary_account', {})
                     account_name = primary_account.get('name', 'Unknown Account')
-                    return f"✅ Connected to Outlook via COM\nAccount: {account_name}\nMethod: {result.get('method')}"
+                    primary_email = primary_account.get('email', '')
+                    
+                    # Initialize task suggester with user context
+                    if primary_email:
+                        from email_intelligence import task_suggester
+                        task_suggester.set_user_context(primary_email)
+                        logger.info(f"🧠 Initialized task suggester with user context: {primary_email}")
+                    
+                    return {"text": f"✅ Connected to Outlook via COM\nAccount: {account_name}\nMethod: {result.get('method')}", "actions": []}
                 else:
-                    return f"❌ Connection failed: {result.get('message', 'Unknown error')}"
+                    return {"text": f"❌ Connection failed: {result.get('message', 'Unknown error')}", "actions": []}
                     
             except Exception as e:
                 logger.error(f"COM connection failed: {e}")
-                return f"❌ Connection failed: {str(e)}"
+                return {"text": f"❌ Connection failed: {str(e)}", "actions": []}
         
         # /outlook sync removed - emails are accessed directly from Outlook, not synced to database
         
@@ -307,7 +344,7 @@ class COSOrchestrator(BaseAgent):
                 if not com_service.is_connected():
                     connection_result = com_service.connect()
                     if not connection_result.get('connected'):
-                        return f"❌ Cannot setup folders: {connection_result.get('message', 'Connection failed')}"
+                        return {"text": f"❌ Cannot setup folders: {connection_result.get('message', 'Connection failed')}", "actions": []}
                 
                 # Setup GTD folders
                 folder_results = com_service.setup_gtd_folders()
@@ -325,7 +362,7 @@ class COSOrchestrator(BaseAgent):
                 
             except Exception as e:
                 logger.error(f"Outlook setup error: {e}")
-                return f"❌ Folder setup failed: {str(e)}"
+                return {"text": f"❌ Folder setup failed: {str(e)}", "actions": []}
         
         elif "/outlook test" in command:
             # Test COM service functionality
@@ -336,7 +373,7 @@ class COSOrchestrator(BaseAgent):
                 if not com_service.is_connected():
                     connection_result = com_service.connect()
                     if not connection_result.get('connected'):
-                        return f"❌ COM Test Failed: {connection_result.get('message', 'Connection failed')}"
+                        return {"text": f"❌ COM Test Failed: {connection_result.get('message', 'Connection failed')}", "actions": []}
                 
                 # Test folder access
                 folders = com_service.get_folders()
@@ -347,7 +384,7 @@ class COSOrchestrator(BaseAgent):
                         break
                 
                 if not inbox_info:
-                    return "❌ COM Test Failed: Inbox folder not found"
+                    return {"text": "❌ COM Test Failed: Inbox folder not found", "actions": []}
                 
                 # Test email retrieval with analysis
                 test_emails = await com_service.get_recent_emails_with_analysis("Inbox", 3)
@@ -369,15 +406,15 @@ class COSOrchestrator(BaseAgent):
                 
             except Exception as e:
                 logger.error(f"COM test failed: {e}")
-                return f"❌ COM Test failed: {str(e)}"
+                return {"text": f"❌ COM Test failed: {str(e)}", "actions": []}
 
         elif "/outlook triage" in command:
             # Email triage now handled directly via COM integration without database storage
-            return "Email triage functionality has been simplified - emails are processed directly from Outlook without database storage. Use email analysis features in the UI instead."
+            return {"text": "Email triage functionality has been simplified - emails are processed directly from Outlook without database storage. Use email analysis features in the UI instead.", "actions": []}
         
         elif "/outlook disconnect" in command:
             # COM connection doesn't require explicit disconnect
-            return "COM connection automatically manages Outlook connection. No manual disconnect needed."
+            return {"text": "COM connection automatically manages Outlook connection. No manual disconnect needed.", "actions": []}
         
         elif "/outlook info" in command:
             # Get connection info from COM service
@@ -385,12 +422,12 @@ class COSOrchestrator(BaseAgent):
                 com_service = self.email_triage.get_com_service()
                 connection_info = com_service.get_connection_info()
                 if connection_info['connected']:
-                    return f"✅ Connected via COM\nAccount: {connection_info.get('account_info', {}).get('display_name', 'Unknown')}"
+                    return {"text": f"✅ Connected via COM\nAccount: {connection_info.get('account_info', {}).get('display_name', 'Unknown')}", "actions": []}
                 else:
-                    return "❌ Not connected to Outlook. Use '/outlook connect' to connect."
+                    return {"text": "❌ Not connected to Outlook. Use '/outlook connect' to connect.", "actions": []}
             except Exception as e:
                 logger.error(f"Error getting connection info: {e}")
-                return f"Error getting connection info: {str(e)}"
+                return {"text": f"Error getting connection info: {str(e)}", "actions": []}
         
         elif "/outlook status" in command:
             # Get COM connection status 
@@ -398,15 +435,15 @@ class COSOrchestrator(BaseAgent):
             try:
                 com_service = self.email_triage.get_com_service()
                 if com_service.is_connected():
-                    return "✅ Outlook connected via COM. Ready to process emails."
+                    return {"text": "✅ Outlook connected via COM. Ready to process emails.", "actions": []}
                 else:
-                    return "❌ Not connected to Outlook. Use '/outlook connect' to connect."
+                    return {"text": "❌ Not connected to Outlook. Use '/outlook connect' to connect.", "actions": []}
             except Exception as e:
                 logger.error(f"Error processing /outlook status: {e}")
-                return f"Error checking Outlook status: {str(e)}"
+                return {"text": f"Error checking Outlook status: {str(e)}", "actions": []}
         
         else:
-            return "Available Outlook commands: /outlook connect, /outlook setup, /outlook triage, /outlook status, /outlook info, /outlook test, /outlook disconnect"
+            return {"text": "Available Outlook commands: /outlook connect, /outlook setup, /outlook triage, /outlook status, /outlook info, /outlook test, /outlook disconnect", "actions": []}
     
     async def _build_current_context(self, db: Session) -> Dict[str, Any]:
         """Build current context for AI interactions"""

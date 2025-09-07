@@ -58,9 +58,17 @@ class OutlookPropertySync:
                     outlook_item.UserProperties.Add("COS.AnalysisConfidence", 5).Value = float(analysis.confidence)
                 elif isinstance(analysis, dict) and 'confidence' in analysis:
                     outlook_item.UserProperties.Add("COS.AnalysisConfidence", 5).Value = float(analysis['confidence'])
+                    
+                # Store suggested actions as JSON for future retrieval and tracking
+                if hasattr(analysis, 'suggested_actions') and analysis.suggested_actions:
+                    import json
+                    outlook_item.UserProperties.Add("COS.SuggestedActions", 1).Value = json.dumps(analysis.suggested_actions)
+                elif isinstance(analysis, dict) and 'suggested_actions' in analysis:
+                    import json
+                    outlook_item.UserProperties.Add("COS.SuggestedActions", 1).Value = json.dumps(analysis['suggested_actions'])
             
             # Set processing timestamp
-            outlook_item.UserProperties.Add("COS.ProcessedAt", 7).Value = datetime.now()
+            outlook_item.UserProperties.Add("COS.ProcessedAt", 7).Value = datetime.utcnow()
             
             outlook_item.Save()
             logger.info("Successfully saved COS properties to Outlook item")
@@ -168,3 +176,41 @@ def load_email_from_outlook_with_cos_data(outlook_item, com_connector):
     except Exception as e:
         logger.error(f"Failed to load email with COS data: {e}")
         return None
+
+def save_selected_action_to_outlook(outlook_item, action_type: str, action_data: dict = None) -> bool:
+    """Save a user-selected action to Outlook for future training"""
+    try:
+        import json
+        from datetime import datetime
+        
+        # Get existing selected actions or create new list
+        selected_actions = []
+        try:
+            existing_prop = outlook_item.UserProperties.Find("COS.SelectedActions")
+            if existing_prop and existing_prop.Value:
+                selected_actions = json.loads(existing_prop.Value)
+        except:
+            selected_actions = []
+        
+        # Add new selected action with timestamp
+        new_action = {
+            "action_type": action_type,
+            "selected_at": datetime.utcnow().isoformat(),
+            "action_data": action_data or {}
+        }
+        
+        selected_actions.append(new_action)
+        
+        # Keep only last 10 selections to avoid bloat
+        selected_actions = selected_actions[-10:]
+        
+        # Save updated list to Outlook
+        outlook_item.UserProperties.Add("COS.SelectedActions", 1).Value = json.dumps(selected_actions)
+        outlook_item.Save()
+        
+        logger.info(f"✅ Saved user action selection: {action_type} to email COS properties")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to save selected action to Outlook: {e}")
+        return False

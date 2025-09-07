@@ -33,7 +33,7 @@ class ClaudeClient:
         
         # Rate limiting for API calls
         self._last_request_time = 0.0
-        self._last_activity_time = datetime.now()
+        self._last_activity_time = datetime.utcnow()
         self._request_lock = threading.Lock()
         self._idle_timeout_minutes = 30  # Only check connection after 30 minutes idle
         self._min_request_interval = 1.0  # Minimum 1 second between requests
@@ -42,7 +42,7 @@ class ClaudeClient:
         self.usage_stats = {
             'total_calls': 0,
             'calls_today': 0,
-            'last_reset_date': datetime.now().date(),
+            'last_reset_date': datetime.utcnow().date(),
             'cache_hits': 0,
             'mock_responses': 0,
             'api_calls': 0,
@@ -107,12 +107,12 @@ class ClaudeClient:
     
     def update_activity(self):
         """Update the last activity time to track user interaction"""
-        self._last_activity_time = datetime.now()
+        self._last_activity_time = datetime.utcnow()
         logger.debug("User activity updated")
     
     def should_check_connection(self) -> bool:
         """Check if enough idle time has passed to warrant connection check"""
-        idle_time = datetime.now() - self._last_activity_time
+        idle_time = datetime.utcnow() - self._last_activity_time
         should_check = idle_time >= timedelta(minutes=self._idle_timeout_minutes)
         
         if should_check:
@@ -510,7 +510,7 @@ Consider scheduling focused time for Project Alpha client feedback review - it's
     
     def _reset_daily_stats_if_needed(self):
         """Reset daily stats if it's a new day"""
-        today = datetime.now().date()
+        today = datetime.utcnow().date()
         if self.usage_stats['last_reset_date'] != today:
             self.usage_stats['calls_today'] = 0
             self.usage_stats['last_reset_date'] = today
@@ -540,7 +540,7 @@ Consider scheduling focused time for Project Alpha client feedback review - it's
         
         # Add to call history (keep last 20)
         call_details = {
-            'timestamp': datetime.now().isoformat(),
+            'timestamp': datetime.utcnow().isoformat(),
             'prompt_key': prompt_key,
             'call_type': call_type,
             'tokens_sent': tokens_sent,
@@ -611,7 +611,7 @@ Consider scheduling focused time for Project Alpha client feedback review - it's
         self.usage_stats = {
             'total_calls': 0,
             'calls_today': 0,
-            'last_reset_date': datetime.now().date(),
+            'last_reset_date': datetime.utcnow().date(),
             'cache_hits': 0,
             'mock_responses': 0,
             'api_calls': 0,

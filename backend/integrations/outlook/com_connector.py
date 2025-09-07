@@ -242,6 +242,77 @@ class OutlookCOMConnector:
         except Exception as e:
             return None
     
+    def _get_primary_inbox(self):
+        """Get the primary account's Inbox folder"""
+        try:
+            # Get default inbox (usually primary account)
+            primary_inbox = self.namespace.GetDefaultFolder(6)  # 6 = Inbox
+            logger.info(f"📮 Primary inbox: {primary_inbox.Name} (Store: {primary_inbox.Store.DisplayName})")
+            return primary_inbox
+        except Exception as e:
+            logger.error(f"❌ Failed to get primary inbox: {e}")
+            return None
+    
+    def _get_folder_path(self, folder):
+        """Get the full path of a folder for debugging"""
+        try:
+            path_parts = [folder.Name]
+            current = folder
+            
+            # Walk up the folder hierarchy
+            while hasattr(current, 'Parent') and current.Parent:
+                try:
+                    parent = current.Parent
+                    if hasattr(parent, 'Name'):
+                        path_parts.insert(0, parent.Name)
+                    current = parent
+                except:
+                    break
+            
+            # Add store name if available
+            if hasattr(folder, 'Store') and hasattr(folder.Store, 'DisplayName'):
+                path_parts.insert(0, f"[{folder.Store.DisplayName}]")
+            
+            return " > ".join(path_parts)
+        except Exception as e:
+            return f"<path error: {e}>"
+    
+    def _log_available_folders(self, max_folders: int = 20):
+        """Log available folders for debugging"""
+        try:
+            logger.info(f"📂 Available folders (showing max {max_folders}):")
+            count = 0
+            
+            for store in self.namespace.Stores:
+                if count >= max_folders:
+                    break
+                logger.info(f"  Store: {store.DisplayName}")
+                
+                try:
+                    root_folder = store.GetRootFolder()
+                    for folder in root_folder.Folders:
+                        if count >= max_folders:
+                            break
+                        logger.info(f"    📁 {self._get_folder_path(folder)}")
+                        count += 1
+                        
+                        # Show first few subfolders
+                        try:
+                            subfolder_count = 0
+                            for subfolder in folder.Folders:
+                                if subfolder_count >= 3 or count >= max_folders:
+                                    break
+                                logger.info(f"      📁 {self._get_folder_path(subfolder)}")
+                                count += 1
+                                subfolder_count += 1
+                        except:
+                            pass
+                except Exception as e:
+                    logger.info(f"    Error accessing store folders: {e}")
+                    
+        except Exception as e:
+            logger.error(f"Failed to log available folders: {e}")
+    
     def _extract_message_data(self, item) -> Optional[Dict[str, Any]]:
         """Extract message data using standardized email schema"""
         try:
@@ -460,7 +531,7 @@ class OutlookCOMConnector:
             cos_properties = self._extract_cos_properties_legacy(item)
             
             # Convert datetime objects to strings for JSON serialization
-            received_at = getattr(item, 'ReceivedTime', datetime.now())
+            received_at = getattr(item, 'ReceivedTime', datetime.utcnow())
             sent_at = getattr(item, 'SentOn', None)
             
             email_data = {
@@ -564,15 +635,24 @@ class OutlookCOMConnector:
             "COS.Tone": "tone",
             "COS.Urgency": "urgency", 
             "COS.Summary": "summary",
-            "COS.AnalysisConfidence": "confidence"
+            "COS.AnalysisConfidence": "confidence",
+            "COS.SuggestedActions": "suggested_actions"
         }
         
         for cos_prop, analysis_key in prop_mapping.items():
             if cos_prop in cos_properties and cos_properties[cos_prop] is not None:
                 value = cos_properties[cos_prop]
                 
+                # Special handling for suggested_actions (JSON string)
+                if analysis_key == "suggested_actions" and isinstance(value, str):
+                    try:
+                        import json
+                        analysis_data[analysis_key] = json.loads(value)
+                    except json.JSONDecodeError:
+                        logger.warning(f"Failed to parse suggested_actions JSON: {value}")
+                        analysis_data[analysis_key] = []
                 # Convert datetime objects to float (confidence scores)
-                if hasattr(value, 'timestamp'):
+                elif hasattr(value, 'timestamp'):
                     # This is a datetime object, convert to confidence score
                     try:
                         # Convert COM datetime to reasonable confidence score (0.0-1.0)
@@ -610,27 +690,40 @@ class OutlookCOMConnector:
             
         try:
             if parent_folder:
-                parent = self._find_folder_by_name(parent_folder)
-                if not parent:
-                    logger.error(f"Parent folder '{parent_folder}' not found")
-                    return False
+                if parent_folder.lower() == 'inbox':
+                    # Force use of primary account's default Inbox folder
+                    parent = self._get_primary_inbox()
+                    if not parent:
+                        logger.error(f"❌ Could not find primary account's Inbox")
+                        return False
+                    logger.info(f"📁 Using primary account Inbox: {self._get_folder_path(parent)}")
+                else:
+                    parent = self._find_folder_by_name(parent_folder)
+                    if not parent:
+                        logger.error(f"❌ Parent folder '{parent_folder}' not found")
+                        return False
+                    logger.info(f"📁 Found parent folder: {parent.Name} (Full path: {self._get_folder_path(parent)})")
             else:
-                # Create under Inbox
-                parent = self.namespace.GetDefaultFolder(6)  # Inbox
+                # Create under primary account's Inbox
+                parent = self._get_primary_inbox()
+                if not parent:
+                    logger.error(f"❌ Could not find primary account's Inbox")
+                    return False
+                logger.info(f"📁 Using primary Inbox: {self._get_folder_path(parent)}")
             
             # Check if folder already exists in parent
             existing_folder = self._check_folder_exists(folder_name, parent)
             if existing_folder:
-                logger.info(f"Folder already exists: {folder_name}")
+                logger.info(f"✅ Folder already exists: {folder_name} in {self._get_folder_path(parent)}")
                 return True
             
             # Create the folder
             new_folder = parent.Folders.Add(folder_name)
-            logger.info(f"Created folder: {folder_name}")
+            logger.info(f"✅ Created folder: {folder_name} in {self._get_folder_path(parent)}")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to create folder {folder_name}: {e}")
+            logger.error(f"❌ Failed to create folder {folder_name}: {e}")
             return False
     
     def move_message(self, message_id: str, destination_folder: str) -> bool:
@@ -639,22 +732,33 @@ class OutlookCOMConnector:
             return False
             
         try:
+            logger.info(f"🔄 Moving message {message_id} to folder '{destination_folder}'")
+            
             # Find the message by EntryID
             item = self.namespace.GetItemFromID(message_id)
+            current_folder_path = self._get_folder_path(item.Parent) if hasattr(item, 'Parent') else "Unknown"
+            logger.info(f"📧 Found message: '{item.Subject[:50]}...' in {current_folder_path}")
             
             # Find destination folder
             dest_folder = self._find_folder_by_name(destination_folder)
             if not dest_folder:
-                logger.error(f"Destination folder '{destination_folder}' not found")
+                logger.error(f"❌ Destination folder '{destination_folder}' not found")
+                # Log all available folders for debugging
+                self._log_available_folders()
                 return False
+            
+            dest_folder_path = self._get_folder_path(dest_folder)
+            logger.info(f"📁 Found destination: {dest_folder_path}")
             
             # Move the item
             item.Move(dest_folder)
-            logger.info(f"Moved message to {destination_folder}")
+            logger.info(f"✅ Moved message '{item.Subject[:50]}...' from {current_folder_path} to {dest_folder_path}")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to move message: {e}")
+            logger.error(f"❌ Failed to move message: {e}")
+            import traceback
+            logger.error(f"❌ Traceback: {traceback.format_exc()}")
             return False
     
     def get_account_info(self) -> Dict[str, Any]:

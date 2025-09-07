@@ -269,6 +269,8 @@
       overflow-y: auto;
       display: flex;
       flex-direction: column;
+      font-family: var(--font-family);
+      font-size: var(--font-size-base);
     }
 
     .chat-input-area {
@@ -1708,51 +1710,75 @@
       color: white;
     }
 
+    /* Agent message bubbles - improved styling */
     .message.agent .message-content {
       background: var(--surface);
       color: var(--text-primary);
+      border: 1px solid var(--border);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      margin: 4px 0;
     }
 
-    .message.thinking .message-content {
-      background: none !important;
-      color: var(--text-muted);
-      opacity: 0.7;
-      font-style: normal;
-      text-align: left !important;
-      padding: 0;
-      border-radius: 0;
+    /* User message bubbles */
+    .message.user .message-content {
+      background: var(--brand-primary);
+      color: white;
+      margin-left: auto;
+      border: 1px solid var(--brand-primary);
+      box-shadow: 0 1px 3px rgba(59, 130, 246, 0.2);
     }
 
-    .message.agent .message-content {
-      background: var(--surface);
-      color: var(--text-primary);
-    }
-
-    /* Status messages should appear as plain text like thinking messages */
+    /* Status messages (navigation, loading, etc.) - no bubble, grey text */
+    .message.status .message-content,
+    .message.thinking .message-content,
     .message.agent.status .message-content {
       background: none !important;
       color: var(--text-muted) !important;
-      opacity: 0.7 !important;
+      opacity: 0.8 !important;
       font-style: normal !important;
       text-align: left !important;
-      padding: 0 !important;
+      padding: 8px 0 !important;
       border-radius: 0 !important;
+      border: none !important;
+      box-shadow: none !important;
+      font-size: 13px !important;
+      margin: 2px 0 !important;
+      max-width: 100% !important;
     }
 
-    .message.thinking {
+    /* Status messages alignment */
+    .message.status,
+    .message.thinking,
+    .message.agent.status {
       align-items: flex-start !important;
-      text-align: left !important;
-      justify-content: flex-start !important;
     }
 
-    .message.thinking * {
-      text-align: left !important;
-    }
 
     .message-time {
       font-size: 12px;
       color: var(--text-muted);
       margin-top: 4px;
+    }
+
+    /* Action links in recommendations - styled as inline hyperlinks */
+    .action-link {
+      color: var(--brand-primary);
+      text-decoration: underline;
+      text-decoration-color: var(--brand-primary);
+      text-underline-offset: 2px;
+      cursor: pointer;
+      font-weight: var(--font-weight-medium);
+      transition: all var(--duration-fast) var(--ease);
+    }
+
+    .action-link:hover {
+      color: var(--brand-hover);
+      text-decoration-color: var(--brand-hover);
+      text-decoration-thickness: 2px;
+    }
+
+    .action-link:active {
+      color: var(--brand-active);
     }
 
     /* Input area */
@@ -1864,6 +1890,60 @@
       width: 16px;
       height: 16px;
       flex-shrink: 0;
+    }
+
+    /* Email Recommendations */
+    .message-with-recommendations {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .recommendations-header {
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+
+    .email-recommendations {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding-left: 8px;
+    }
+
+    .recommendation-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 4px;
+    }
+
+    .recommendation-bullet {
+      color: var(--text-muted);
+      font-size: 14px;
+      line-height: 20px;
+    }
+
+    .recommendation-link {
+      background: none;
+      border: none;
+      color: var(--brand-primary);
+      text-decoration: underline;
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 20px;
+      text-align: left;
+      padding: 0;
+      font-family: inherit;
+      transition: color var(--transition-fast);
+    }
+
+    .recommendation-link:hover {
+      color: var(--brand-hover);
+    }
+
+    .recommendation-link:active {
+      color: var(--brand-active, var(--brand-hover));
     }
 
   </style>
@@ -2445,11 +2525,54 @@
                   id: Date.now() + '_analysis_complete',
                   text: `✅ Analysis complete for: "${email?.subject?.substring(0, 50) || 'Email'}" - Priority: ${analysis.priority}, Tone: ${analysis.tone}`,
                   timestamp: new Date().toISOString(),
-                  sender: 'system'
+                  sender: 'system',
+                  isStatus: true
                 };
                 setMessages(prev => [...prev, successMessage]);
                 
                 console.log('✅ Email analysis updated in UI for:', message.data.email_id);
+              }
+            } else if (message.event === 'navigate') {
+              // Handle navigation commands from the agent
+              const target = message.data.target;
+              console.log('🧭 Agent requested navigation to:', target);
+              
+              if (target && typeof target === 'string') {
+                // Validate target is a valid route
+                const validRoutes = ['inbox', 'emails', 'projects', 'profile', 'contacts'];
+                if (validRoutes.includes(target)) {
+                  setActiveRoute(target);
+                  console.log('✅ Navigated to:', target);
+                  
+                  // Add a subtle system message to indicate navigation
+                  const navMessage = {
+                    id: Date.now() + '_navigation',
+                    text: `📍 Navigated to ${target.charAt(0).toUpperCase() + target.slice(1)}`,
+                    timestamp: new Date().toISOString(),
+                    sender: 'system',
+                    type: 'navigation',
+                    isStatus: true
+                  };
+                  setMessages(prev => [...prev, navMessage]);
+                } else {
+                  console.error('Invalid navigation target:', target);
+                }
+              }
+            } else if (message.event === 'email:archived') {
+              // Handle optimistic email archiving
+              const { email_id, success } = message.data;
+              console.log(`📂 Email archived: ${email_id}, success: ${success}`);
+              
+              if (success) {
+                // Optimistically remove email from list
+                setEmails(prevEmails => prevEmails.filter(email => email.id !== email_id));
+                
+                // Clear selected email if it was the archived one
+                if (selectedEmail?.id === email_id) {
+                  setSelectedEmail(null);
+                }
+                
+                console.log(`✅ Removed archived email ${email_id} from UI`);
               }
             }
           } catch (error) {
@@ -2619,9 +2742,11 @@
         });
         setSelectedEmail(email);
         
-        // Auto-trigger email analysis if not already analyzed
+        // Auto-trigger email analysis if not already analyzed, or send existing recommendations
         console.log(`🔍 Email selected: "${email?.subject?.substring(0,30)}..." - Priority: ${email?.priority}, Analysis:`, !!email?.analysis);
+        
         if (email && (!email.analysis || email.priority === 'Unassessed')) {
+          // Email needs analysis
           console.log('🔄 Auto-triggering email analysis for:', email.id);
           
           // Set processing state for this email in the list
@@ -2648,15 +2773,142 @@
             };
             wsRef.current.send(JSON.stringify(message));
           }
+        } else if (email && email.analysis) {
+          // Email already has analysis - send existing recommendations to COS chat
+          console.log('📧 Sending existing recommendations for analyzed email:', email.id);
+          
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            const message = {
+              event: 'email:selected',
+              data: { 
+                email_id: email.id
+              }
+            };
+            wsRef.current.send(JSON.stringify(message));
+          }
         }
       };
 
+      // Email action handlers for context menu
+      const reprocessEmailWithAI = (email) => {
+        console.log('🤖 Reprocessing email with AI:', email.subject);
+        handleContextMenuAction('reprocess', email);
+      };
+
+      const markEmailAsRead = (email) => {
+        console.log('✓ Marking email as read:', email.subject);
+        // Update email in the list
+        setEmails(prevEmails => 
+          prevEmails.map(e => 
+            e.id === email.id 
+              ? { ...e, is_read: true }
+              : e
+          )
+        );
+        // Update selected email if it matches
+        if (selectedEmail?.id === email.id) {
+          setSelectedEmail(prev => ({ ...prev, is_read: true }));
+        }
+      };
+
+      const markEmailAsUnread = (email) => {
+        console.log('● Marking email as unread:', email.subject);
+        // Update email in the list
+        setEmails(prevEmails => 
+          prevEmails.map(e => 
+            e.id === email.id 
+              ? { ...e, is_read: false }
+              : e
+          )
+        );
+        // Update selected email if it matches
+        if (selectedEmail?.id === email.id) {
+          setSelectedEmail(prev => ({ ...prev, is_read: false }));
+        }
+      };
+
+      const showMoveToFolderDialog = (email) => {
+        console.log('📁 Opening move to folder dialog for:', email.subject);
+        // TODO: Implement folder selection dialog
+        alert(`Moving "${email.subject}" to folder - Feature coming soon!`);
+      };
+
+      const createTaskFromEmail = (email) => {
+        console.log('➕ Creating task from email:', email.subject);
+        // TODO: Implement task creation from email
+        alert(`Creating task from "${email.subject}" - Feature coming soon!`);
+      };
+
+      const archiveEmail = (email) => {
+        console.log('📦 Archiving email:', email.subject);
+        // TODO: Implement email archiving
+        alert(`Archiving "${email.subject}" - Feature coming soon!`);
+      };
+
+      // Utility functions for consistent datetime formatting
+      // All backend timestamps are in UTC, frontend converts to local time
+      
       const formatTime = (timestamp) => {
-        return new Date(timestamp).toLocaleTimeString('en-US', {
+        // Handle both ISO string and Date object inputs
+        const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
+        if (isNaN(date.getTime())) return 'Invalid time';
+        
+        return date.toLocaleTimeString('en-US', {
           hour: 'numeric',
           minute: '2-digit',
           hour12: true
         });
+      };
+
+      const formatDate = (timestamp, includeTime = false) => {
+        // Standard date formatting for consistency across the app
+        const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
+        if (isNaN(date.getTime())) return 'Invalid date';
+        
+        const options = { 
+          year: 'numeric', 
+          month: 'short', 
+          day: 'numeric' 
+        };
+        
+        if (includeTime) {
+          options.hour = 'numeric';
+          options.minute = '2-digit';
+          options.hour12 = true;
+        }
+        
+        return date.toLocaleDateString('en-US', options);
+      };
+
+      const formatRelativeTime = (timestamp) => {
+        // Smart relative time formatting (Today, Yesterday, or date)
+        const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
+        if (isNaN(date.getTime())) return 'Invalid date';
+        
+        const now = new Date();
+        const isToday = date.toDateString() === now.toDateString();
+        
+        if (isToday) {
+          return formatTime(timestamp);
+        }
+        
+        const yesterday = new Date(now);
+        yesterday.setDate(now.getDate() - 1);
+        const isYesterday = date.toDateString() === yesterday.toDateString();
+        
+        if (isYesterday) {
+          return `Yesterday ${formatTime(timestamp)}`;
+        }
+        
+        // For older items, show date and time
+        const currentYear = now.getFullYear();
+        const itemYear = date.getFullYear();
+        
+        if (itemYear === currentYear) {
+          return `${date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} ${formatTime(timestamp)}`;
+        } else {
+          return `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${formatTime(timestamp)}`;
+        }
       };
 
       // Helper function to get assessment flag colors and text colors
@@ -2733,49 +2985,6 @@
         return { background: '#f3f4f6', color: '#4b5563', border: '1px solid #d1d5db' };
       };
 
-      const formatDate = (timestamp) => {
-        if (!timestamp || timestamp === 'unknown' || timestamp === '') {
-          return 'Unknown date';
-        }
-        
-        const date = new Date(timestamp);
-        
-        // Check if date is invalid
-        if (isNaN(date.getTime())) {
-          return 'Invalid date';
-        }
-        
-        const now = new Date();
-        
-        // Check if it's the same day (today)
-        const isToday = date.toDateString() === now.toDateString();
-        
-        if (isToday) {
-          // Show just time for today's emails
-          return formatTime(timestamp);
-        } else {
-          // Check if it's yesterday
-          const yesterday = new Date(now);
-          yesterday.setDate(now.getDate() - 1);
-          const isYesterday = date.toDateString() === yesterday.toDateString();
-          
-          if (isYesterday) {
-            return `Yesterday ${formatTime(timestamp)}`;
-          } else {
-            // For older emails, show date and time
-            const currentYear = now.getFullYear();
-            const emailYear = date.getFullYear();
-            
-            if (emailYear === currentYear) {
-              // Same year: show "Mon, Jan 15 10:30 AM"
-              return `${date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} ${formatTime(timestamp)}`;
-            } else {
-              // Different year: show "Jan 15, 2024 10:30 AM"
-              return `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${formatTime(timestamp)}`;
-            }
-          }
-        }
-      };
 
       // Area tabs utility functions
       const getOrderedAreas = () => {
@@ -3545,6 +3754,44 @@
                 { label: 'Delete Area', action: () => deleteArea(area.id), destructive: true }
               ];
               
+            case 'email':
+              const email = contextMenu.email;
+              return [
+                { 
+                  label: 'Reprocess with AI', 
+                  action: () => reprocessEmailWithAI(email),
+                  icon: '🤖'
+                },
+                { 
+                  label: 'Mark as Read', 
+                  action: () => markEmailAsRead(email),
+                  disabled: email.is_read,
+                  icon: '✓'
+                },
+                { 
+                  label: 'Mark as Unread', 
+                  action: () => markEmailAsUnread(email),
+                  disabled: !email.is_read,
+                  icon: '●'
+                },
+                { 
+                  label: 'Create Task', 
+                  action: () => createTaskFromEmail(email),
+                  icon: '➕'
+                },
+                { 
+                  label: 'Move to Folder', 
+                  action: () => showMoveToFolderDialog(email),
+                  icon: '📁'
+                },
+                { label: 'separator' },
+                { 
+                  label: 'Archive Email', 
+                  action: () => archiveEmail(email),
+                  icon: '📦'
+                }
+              ];
+              
             default:
               return [];
           }
@@ -3576,7 +3823,14 @@
             },
             disabled: item.disabled,
             title: item.tooltip || undefined
-          }, item.label);
+          }, [
+            item.icon ? React.createElement('span', { 
+              key: 'icon', 
+              className: 'context-menu-icon',
+              style: { marginRight: '8px' }
+            }, item.icon) : null,
+            React.createElement('span', { key: 'label' }, item.label)
+          ].filter(Boolean));
         }));
       };
 
@@ -3976,6 +4230,197 @@
         ]);
       };
 
+      // Handle email recommendation actions
+      const handleEmailRecommendation = async (actionType, actionData) => {
+        const actionMessage = {
+          event: 'email_recommendation_action',
+          data: {
+            action_type: actionType,
+            action_data: actionData
+          }
+        };
+        
+        console.log('Executing email recommendation:', actionMessage);
+        
+        // Send action to backend via WebSocket
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify(actionMessage));
+        }
+      };
+
+      // Handle email recommendation action clicks
+      const handleRecommendationAction = (actionText, emailId) => {
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+          console.error('WebSocket not connected');
+          return;
+        }
+        
+        // Parse action type from action text
+        let actionType = 'unknown';
+        let actionData = {};
+        
+        if (actionText.toLowerCase().includes('archive')) {
+          actionType = 'archive';
+          // Optimistically remove email from list immediately
+          setEmails(prevEmails => prevEmails.filter(email => email.id !== emailId));
+          // Clear selected email if it was the archived one
+          if (selectedEmail?.id === emailId) {
+            setSelectedEmail(null);
+          }
+          console.log(`🚀 Optimistically removed email ${emailId} from UI`);
+        } else if (actionText.toLowerCase().includes('create') || actionText.toLowerCase().includes('task')) {
+          actionType = 'create_task';
+        } else if (actionText.toLowerCase().includes('categorize') || actionText.toLowerCase().includes('category')) {
+          actionType = 'flag_category';
+        } else if (actionText.toLowerCase().includes('reading list') || actionText.toLowerCase().includes('read later')) {
+          actionType = 'save_later';
+        } else if (actionText.toLowerCase().includes('reference') || actionText.toLowerCase().includes('save')) {
+          actionType = 'save_reference';
+        }
+        
+        console.log(`🔄 [FRONTEND] STARTING handleRecommendationAction`);
+        console.log(`🔄 [FRONTEND] - Action Text: "${actionText}"`);
+        console.log(`🔄 [FRONTEND] - Email ID: ${emailId}`);
+        console.log(`🔄 [FRONTEND] - Detected Action Type: ${actionType}`);
+        console.log(`🔄 [FRONTEND] - Action Data: ${JSON.stringify(actionData)}`);
+        
+        // Create WebSocket message
+        const wsMessage = {
+          event: 'email_recommendation_action',
+          data: {
+            action_type: actionType,
+            action_data: actionData,
+            email_id: emailId
+          }
+        };
+        
+        console.log(`🔄 [FRONTEND] Sending WebSocket message:`, JSON.stringify(wsMessage, null, 2));
+        
+        // Send action to backend
+        wsRef.current.send(JSON.stringify(wsMessage));
+      };
+      
+      // Render message content with clickable recommendation links
+      const renderMessageContent = (content, message = null) => {
+        if (!content) return '';
+        
+        // Handle new action link format: **[action text]** 
+        const actionLinkPattern = /\*\*\[([^\]]+)\]\*\*/g;
+        
+        if (actionLinkPattern.test(content)) {
+          // Reset regex
+          actionLinkPattern.lastIndex = 0;
+          
+          let lastIndex = 0;
+          const parts = [];
+          let match;
+          let keyIndex = 0;
+          
+          while ((match = actionLinkPattern.exec(content)) !== null) {
+            // Add text before the action
+            if (match.index > lastIndex) {
+              const beforeText = content.substring(lastIndex, match.index);
+              if (beforeText.trim()) {
+                parts.push(React.createElement('span', { key: `text-${keyIndex++}` }, beforeText));
+              }
+            }
+            
+            // Add the action as a styled hyperlink
+            const actionText = match[1];
+            const emailId = message?.email_id || null;
+            
+            parts.push(React.createElement('a', {
+              key: `action-${keyIndex++}`,
+              className: 'action-link',
+              href: '#',
+              onClick: (e) => {
+                e.preventDefault();
+                if (emailId) {
+                  handleRecommendationAction(actionText, emailId);
+                } else {
+                  console.warn('No email ID available for action:', actionText);
+                }
+              }
+            }, actionText));
+            
+            lastIndex = match.index + match[0].length;
+          }
+          
+          // Add any remaining text
+          if (lastIndex < content.length) {
+            const remainingText = content.substring(lastIndex);
+            if (remainingText.trim()) {
+              parts.push(React.createElement('span', { key: `text-${keyIndex++}` }, remainingText));
+            }
+          }
+          
+          return React.createElement('div', { className: 'message-with-actions' }, parts);
+        }
+        
+        // Handle old recommendation format for backwards compatibility
+        const recommendationPattern = /📧 Email Recommendations:([\s\S]*)/;
+        const oldMatch = content.match(recommendationPattern);
+        
+        if (oldMatch) {
+          const [fullMatch, recommendations] = oldMatch;
+          const beforeRecommendations = content.substring(0, content.indexOf(fullMatch));
+          
+          // Parse individual recommendation lines
+          const recommendationLines = recommendations.split('\n').filter(line => line.trim().startsWith('•'));
+          
+          return React.createElement('div', { className: 'message-with-recommendations' }, [
+            // Before recommendations text
+            beforeRecommendations && React.createElement('div', { key: 'before', className: 'message-text' }, beforeRecommendations),
+            
+            // Recommendations header
+            React.createElement('div', { key: 'header', className: 'recommendations-header' }, '📧 Email Recommendations:'),
+            
+            // Recommendation items
+            React.createElement('div', { key: 'recommendations', className: 'email-recommendations' },
+              recommendationLines.map((line, idx) => {
+                const cleanLine = line.replace('• ', '').trim();
+                
+                // Extract action type and data from the line format
+                let actionType = 'unknown';
+                let actionData = {};
+                
+                if (cleanLine.includes('Archive this email')) {
+                  actionType = 'archive';
+                } else if (cleanLine.includes('Create task:')) {
+                  actionType = 'create_task';
+                  const taskMatch = cleanLine.match(/Create task: '([^']+)'/);
+                  if (taskMatch) actionData.task_title = taskMatch[1];
+                } else if (cleanLine.includes('Flag as:')) {
+                  actionType = 'flag_category';
+                  const flagMatch = cleanLine.match(/Flag as: ([^-]+)/);
+                  if (flagMatch) actionData.category = flagMatch[1].trim();
+                } else if (cleanLine.includes('Save for later reading')) {
+                  actionType = 'save_later';
+                } else if (cleanLine.includes('Save as reference material')) {
+                  actionType = 'save_reference';
+                }
+                
+                return React.createElement('div', { 
+                  key: idx, 
+                  className: 'recommendation-item' 
+                }, [
+                  React.createElement('span', { key: 'bullet', className: 'recommendation-bullet' }, '• '),
+                  React.createElement('button', {
+                    key: 'action',
+                    className: 'recommendation-link',
+                    onClick: () => handleEmailRecommendation(actionType, actionData),
+                    title: `Click to execute: ${cleanLine}`
+                  }, cleanLine)
+                ]);
+              })
+            )
+          ]);
+        }
+        
+        // Regular message content - just return as text
+        return content;
+      };
+
       const renderChatSidebar = () => {
         return React.createElement('aside', { className: 'chat-sidebar' }, [
           // Header
@@ -4013,17 +4458,31 @@
                   }, suggestion)
                 )
               )
-            ]) : messages.map((msg, idx) =>
-              React.createElement('div', {
+            ]) : messages.map((msg, idx) => {
+              // Determine message type for proper styling
+              const isStatusMessage = msg.isStatus || msg.isThinking || 
+                                    (msg.text && (msg.text.startsWith('📍') || 
+                                                 msg.text.startsWith('✅') || 
+                                                 msg.text.startsWith('🔄') ||
+                                                 msg.text.startsWith('ℹ️') ||
+                                                 msg.text.includes('Navigated to') ||
+                                                 msg.text.includes('Loading') ||
+                                                 msg.text.includes('Connected to')));
+              
+              const messageClass = `message ${msg.role || (msg.sender === 'user' ? 'user' : 'agent')}${msg.isThinking ? ' thinking' : ''}${isStatusMessage ? ' status' : ''}`;
+              
+              return React.createElement('div', {
                 key: idx,
-                className: `message ${msg.role || (msg.sender === 'system' ? 'agent' : 'agent')}${msg.isThinking ? ' thinking' : ''}${msg.isStatus ? ' status' : ''}`
+                className: messageClass
               }, [
-                React.createElement('div', { key: 'content', className: 'message-content' }, msg.content || msg.text),
+                React.createElement('div', { key: 'content', className: 'message-content' }, 
+                  renderMessageContent(msg.content || msg.text, msg)
+                ),
                 msg.timestamp && React.createElement('div', { key: 'time', className: 'message-time' }, 
-                  new Date(msg.timestamp).toLocaleTimeString()
+                  formatTime(msg.timestamp)
                 )
-              ])
-            ),
+              ]);
+            }),
             React.createElement('div', { key: 'end', ref: messagesEndRef })
           ]),
           
@@ -4143,6 +4602,7 @@
                     visible: true,
                     x: e.clientX,
                     y: e.clientY,
+                    type: 'email',
                     email: email
                   });
                 },
@@ -4271,7 +4731,7 @@
           React.createElement('div', { key: 'header', className: 'panel-header' }, [
             React.createElement('h2', { key: 'title', className: 'panel-title' }, selectedEmail.subject || 'No Subject'),
             React.createElement('p', { key: 'subtitle', className: 'panel-subtitle' }, 
-              `From: ${selectedEmail.sender || 'Unknown'} • ${selectedEmail.received_at ? formatTime(selectedEmail.received_at) : 'Unknown date'}`
+              `From: ${selectedEmail.sender || 'Unknown'} • ${selectedEmail.received_at ? formatRelativeTime(selectedEmail.received_at) : 'Unknown date'}`
             )
           ]),
           // Show analysis loading indicator when email is processing
@@ -4686,7 +5146,7 @@
                     task.owner_email ? React.createElement('div', { key: 'owner', className: 'task-owner' }, 
                       `Owner: ${task.owner_email}`) : null,
                     task.due_date ? React.createElement('div', { key: 'due', className: 'task-due' }, 
-                      `Due: ${new Date(task.due_date).toLocaleDateString()}`) : null
+                      `Due: ${formatDate(task.due_date)}`) : null
                   ].filter(Boolean)),
                   React.createElement('div', { key: 'status', className: `task-status status-${task.status}` }, getStatusDisplayText(task.status))
                 ]);

@@ -213,23 +213,24 @@ def create_email_from_com(outlook_item, skip_analysis: bool = False) -> EmailSch
     linked_at = None
     analysis = None
     
-    if not skip_analysis:
-        try:
-            # Load COS properties using existing COM connector methods
-            cos_properties = _extract_cos_properties_from_item(outlook_item)
-            if cos_properties:
-                project_id = cos_properties.get("COS.ProjectId")
-                confidence = cos_properties.get("COS.Confidence") 
-                provenance = cos_properties.get("COS.Provenance")
-                linked_at = cos_properties.get("COS.LinkedAt")
+    # Always load existing COS properties regardless of skip_analysis flag
+    # skip_analysis only controls generation of NEW analysis, not loading of existing analysis
+    try:
+        # Load COS properties using existing COM connector methods
+        cos_properties = _extract_cos_properties_from_item(outlook_item)
+        if cos_properties:
+            project_id = cos_properties.get("COS.ProjectId")
+            confidence = cos_properties.get("COS.Confidence") 
+            provenance = cos_properties.get("COS.Provenance")
+            linked_at = cos_properties.get("COS.LinkedAt")
+            
+            # Reconstruct analysis from COS properties
+            analysis = _reconstruct_analysis_from_cos_properties(cos_properties)
                 
-                # Reconstruct analysis from COS properties
-                analysis = _reconstruct_analysis_from_cos_properties(cos_properties)
-                
-                # Note: logger not always available in schema context
-        except Exception as e:
-            # COS property loading failed - continue without COS data
-            pass
+    except Exception as e:
+        # COS property loading failed - continue without COS data
+        # Note: logger not always available in schema context
+        pass
     
     return EmailSchema(
         id=outlook_item.EntryID,
@@ -242,7 +243,7 @@ def create_email_from_com(outlook_item, skip_analysis: bool = False) -> EmailSch
         bcc_recipients=bcc_recipients,
         body_content=body_content,
         body_preview=body_preview,
-        received_at=getattr(outlook_item, 'ReceivedTime', datetime.now()),
+        received_at=getattr(outlook_item, 'ReceivedTime', datetime.utcnow()),
         sent_at=getattr(outlook_item, 'SentOn', None),
         is_read=getattr(outlook_item, 'UnRead', True) == False,
         importance=_get_importance_text(getattr(outlook_item, 'Importance', 1)),
@@ -396,7 +397,8 @@ def _reconstruct_analysis_from_cos_properties(cos_properties: Dict[str, Any]) ->
         "COS.Tone": "tone", 
         "COS.Urgency": "urgency",
         "COS.Summary": "summary",
-        "COS.AnalysisConfidence": "confidence"
+        "COS.AnalysisConfidence": "confidence",
+        "COS.SuggestedActions": "suggested_actions"
     }
     
     # Add alternative property names for conflict resolution
@@ -431,6 +433,18 @@ def _reconstruct_analysis_from_cos_properties(cos_properties: Dict[str, Any]) ->
                     except (ValueError, TypeError):
                         logger.warning(f"Failed to parse confidence value '{value}', using default")
                         analysis_data[analysis_key] = 0.8  # Default
+            elif analysis_key == "suggested_actions":
+                # Handle JSON-encoded suggested actions
+                if value and str(value).strip():
+                    try:
+                        import json
+                        suggested_actions = json.loads(str(value))
+                        if isinstance(suggested_actions, list):
+                            analysis_data[analysis_key] = suggested_actions
+                        else:
+                            logger.warning(f"Invalid suggested_actions format: {type(suggested_actions)}")
+                    except Exception as e:
+                        logger.warning(f"Failed to parse suggested_actions JSON: {e}")
             else:
                 # Store other fields as strings
                 analysis_data[analysis_key] = str(value)
